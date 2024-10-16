@@ -305,14 +305,16 @@ func (r *resourceInterfaces) Read(ctx context.Context, req resource.ReadRequest,
 		resp.Diagnostics.AddError("Failed while Reading", err.Error())
 		return
 	}
-
+	// new code to read the state from terrafrom
 	var newstate InterfacesModel
 	newstate.ResourceName = types.StringValue(config.Groups.Name)
 	newstate.Name = types.StringPointerValue(config.Groups.V_interface.V_name)
 	newstate.Description = types.StringPointerValue(config.Groups.V_interface.V_description)
+
 	var units []UnitsModel
-	for i, xmlunit := range config.Groups.V_interface.V_units {
+	for i := 0; i < xmlunitvalue.NumField(); i++ {
 		var unit UnitsModel
+		unit.Description = xmlunitvalue.Elem().FieldByName()
 		for m, xmlfamily := range xmlunit.V_family {
 
 		}
@@ -325,6 +327,7 @@ func (r *resourceInterfaces) Read(ctx context.Context, req resource.ReadRequest,
 	}
 	newstate.Units = units_list
 	config.Groups.V_interface.V_mtu = plan.Mtu.ValueInt64Pointer()
+	// new code ends
 
 	// Check values
 	if err := resp.State.Set(ctx, config.Groups.V_interface.V_name); err != nil {
@@ -365,15 +368,39 @@ func (r *resourceInterfaces) Update(ctx context.Context, req resource.UpdateRequ
 		empty := ""
 		config.Groups.V_interface.V_vlan_tagging = &empty
 	}
-	for _, unit := range plan.Units {
+	var units []UnitsModel
+	resp.Diagnostics.Append(plan.Units.ElementsAs(ctx, &units, false)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	for _, unit := range units {
 		config.Groups.V_interface.V_units.V_name = unit.Name.ValueStringPointer()
 		config.Groups.V_interface.V_units.V_description = unit.Description.ValueStringPointer()
 		config.Groups.V_interface.V_units.V_vlan_id = unit.Vlan_id.ValueInt32Pointer()
-		for _, addr := range unit.Family[0].Inet {
-			config.Groups.V_interface.V_units.V_family.V_inet.V_address.V_name = addr.Address.ValueStringPointer()
+
+		var families []FamilyModel
+		resp.Diagnostics.Append(unit.Family.ElementsAs(ctx, &families, false)...)
+		if resp.Diagnostics.HasError() {
+			return
 		}
-		for _, addrv6 := range unit.Family[0].Inet6 {
-			config.Groups.V_interface.V_units.V_family.V_inet6.V_address.V_name = addrv6.Address.ValueStringPointer()
+		for _, family := range families {
+			var inets []InetModel
+			resp.Diagnostics.Append(family.Inet.ElementsAs(ctx, &inets, false)...)
+			if resp.Diagnostics.HasError() {
+				return
+			}
+			for _, inet := range inets {
+				config.Groups.V_interface.V_units.V_family.V_inet.V_address.V_name = inet.Address.ValueStringPointer()
+			}
+			var inet6 []Inet6Model
+			resp.Diagnostics.Append(family.Inet6.ElementsAs(ctx, &inet6, false)...)
+			if resp.Diagnostics.HasError() {
+				return
+			}
+
+			for _, addrv6 := range inet6 {
+				config.Groups.V_interface.V_units.V_family.V_inet6.V_address.V_name = addrv6.Address.ValueStringPointer()
+			}
 		}
 
 		err := r.client.SendTransaction("", config, false)
