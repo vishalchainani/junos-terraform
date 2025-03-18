@@ -30,7 +30,7 @@
 			{%- endif %}
 			{%- endfor %}
 		{%- endif %}
-		}
+		} `xml:"{{ele.name}}"`
 {%- endmacro -%}
 
 {%- macro container_macro(ele) -%}
@@ -51,7 +51,7 @@
 				{%- endif %}
 			{%- endfor %}
 		{%- endif %}
-		}
+		} `xml:"{{ele.name}}"`
 {%- endmacro -%}
 
 {%- macro create_struct(kid, arg2) %}
@@ -346,26 +346,28 @@ func (r *resource{{parent.name|capitalize}}) Schema(_ context.Context, req resou
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
 			{%- for kid in parent['kids'] %}
-			{%- if kid['leaf-type'] == 'string' %}
-			"{{kid.name}}": schema.{{kid['leaf-type']|capitalize}}Attribute{
+			{%- for grandkid in kid['kids']%}
+			{%- if grandkid['leaf-type'] == 'string' %}
+			"{{grandkid.name}}": schema.{{grandkid['leaf-type']|capitalize}}Attribute{
 				Required:            true,
-				MarkdownDescription: "xpath is: `config.Groups.{{kid.name|capitalize}}`",
+				MarkdownDescription: "xpath is: `config.Groups.{{grandkid.name|capitalize}}`",
 			},
 			{%- endif %}
-			{%- if kid['leaf-type'] == 'union' %}
-			"{{kid.name}}": schema.Int64Attribute{
+			{%- if grandkid['leaf-type'] == 'union' %}
+			"{{grandkid.name}}": schema.Int64Attribute{
 				Required:            true,
-				MarkdownDescription: "xpath is: `config.Groups.{{kid.name|capitalize}}`",
+				MarkdownDescription: "xpath is: `config.Groups.{{grandkid.name|capitalize}}`",
 			},
 			{%- endif %}
-			{%- if kid['type'] == 'list' %}
-			"{{kid.name}}": schema.ListNestedAttribute{
+			{%- if grandkid['type'] == 'list' %}
+			"{{grandkid.name}}": schema.ListNestedAttribute{
 				Optional: true,
 				NestedObject: schema.NestedAttributeObject{
-					Attributes: {{kid.name|capitalize}}sModel{}.Attributes(),
+					Attributes: {{grandkid.name|capitalize}}Model{}.Attributes(),
 				},
 			},
 			{%- endif %}
+			{%- endfor %}
 			{%- endfor %}
 		},
 	}
