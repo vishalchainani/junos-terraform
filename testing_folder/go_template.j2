@@ -66,7 +66,7 @@
 type {{grandkid.name|capitalize}}Model struct {
 	{%- for ele in grandkid['kids'] %}
 	{%- if ele['leaf-type'] == 'string' %}
-	{{ele.name|capitalize|replace("-", "_")}}	types.{{ele['leaf-type']|capitalize}} `tfsdk:"{{ele.name}}"`
+	{{ele.name|capitalize|replace("-", "_")}}	types.{{ele['leaf-type']|capitalize}} `tfsdk:"{{ele.name|replace("-", "_")}}"`
 	{%- endif %}
 	{%- if ele['base-type'] == 'string' %}
 	{{ele.name|capitalize}}	types.{{ele['base-type']|capitalize}} `tfsdk:"{{ele.name}}"`
@@ -111,13 +111,13 @@ func (o {{grandkid.name|capitalize}}Model) Attributes() map[string]schema.Attrib
 	{%- if ele['leaf-type'] == 'string'%}
 	"{{ele.name|replace("-","_")}}": schema.{{ele['leaf-type']|capitalize}}Attribute{
 		Optional: true,
-		MarkdownDescription: "xpath is `config.Groups.{{kid[0].name|capitalize}}.{{ele.name|capitalize}}`",
+		MarkdownDescription: "xpath is `config.Groups.{{kid[0].name|capitalize}}.{{ele.name|capitalize|replace("-", "_")}}`",
 	},
 	{%- endif %}
 	{%- if ele['base-type'] == 'string'%}
 	"{{ele.name|replace("-","_")}}": schema.{{ele['base-type']|capitalize}}Attribute{
 		Optional: true,
-		MarkdownDescription: "xpath is `config.Groups.{{kid[0].name|capitalize}}.{{ele.name|capitalize}}`",
+		MarkdownDescription: "xpath is `config.Groups.{{kid[0].name|capitalize}}.{{ele.name|capitalize|replace("-", "_")}}`",
 	},
 	{%- endif %}
 	{%- if ele['leaf-type'] == 'union' %}
@@ -153,8 +153,8 @@ func (o {{grandkid.name|capitalize}}Model) Attributes() map[string]schema.Attrib
 {%- endmacro -%}
 
 {%- macro create_resource_list_type(parent_var, ele, first_element) %}
-	{%- if ele.name not in all_ele_list%}
-	{%- set kid_var = 'var_'+ele.name %}
+	{%- set parent_name = ele['path'].split("/")[-1] %}
+	{%- set kid_var = 'var_'+parent_name+"_"+ele.name %}
 	var {{kid_var}} []{{ele.name|capitalize}}Model
 	{%- if first_element == 1%}
 	resp.Diagnostics.Append({{parent_var}}[0].{{ele.name|capitalize}}.ElementsAs(ctx, &{{kid_var}}, false)...)
@@ -173,7 +173,6 @@ func (o {{grandkid.name|capitalize}}Model) Attributes() map[string]schema.Attrib
 	{%- endif %}
 	{%- endfor %}
 	{%- if all_ele_list.append(ele.name) %}{%- endif %}
-	{%- endif %}
 {%- endmacro %}
 
 {%- macro read_resource_list(ele) %}
@@ -349,14 +348,24 @@ func (r *resource{{parent.name|capitalize}}) Schema(_ context.Context, req resou
 			{%- for grandkid in kid['kids']%}
 			{%- if grandkid['leaf-type'] == 'string' %}
 			"{{grandkid.name}}": schema.{{grandkid['leaf-type']|capitalize}}Attribute{
+				{%- if grandkid.name == 'name'%}
 				Required:            true,
-				MarkdownDescription: "xpath is: `config.Groups.{{grandkid.name|capitalize}}`",
+				{%- else %}
+				Optional:            true,
+				{%- endif %}
+				MarkdownDescription: "xpath is `config.Groups.{{get_parent_list(grandkid)}}.{{grandkid.name|capitalize|replace("-", "_")}}`",
 			},
 			{%- endif %}
 			{%- if grandkid['leaf-type'] == 'union' %}
 			"{{grandkid.name}}": schema.Int64Attribute{
-				Required:            true,
-				MarkdownDescription: "xpath is: `config.Groups.{{grandkid.name|capitalize}}`",
+				Optional:            true,
+				MarkdownDescription: "xpath is `config.Groups.{{get_parent_list(grandkid)}}.{{grandkid.name|capitalize}}`",
+			},
+			{%- endif %}
+			{%- if grandkid['leaf-type'] == 'empty' %}
+			"{{grandkid.name|replace("-", "_")}}": schema.BoolAttribute{
+				Optional:            true,
+				MarkdownDescription: "xpath is `config.Groups.{{get_parent_list(grandkid)}}.{{grandkid.name|capitalize|replace("-", "_")}}`",
 			},
 			{%- endif %}
 			{%- if grandkid['type'] == 'list' %}
@@ -388,7 +397,7 @@ func (r *resource{{parent.name|capitalize}}) Create(ctx context.Context, req res
 	{%- for kid in parent['kids']%}
 	{%- for grandkid in kid['kids']%}
 	{%- if grandkid['leaf-type'] == 'string' %}
-	config.Groups.{{kid.name|capitalize}}.{{grandkid.name|capitalize}} = plan.Name.ValueStringPointer()
+	config.Groups.{{kid.name|capitalize}}.{{grandkid.name|capitalize}} = plan.{{grandkid.name|capitalize}}.ValueStringPointer()
 	{%- endif %}
 	{%- if grandkid['leaf-type'] == 'union' %}
 	config.Groups.{{kid.name|capitalize}}.{{grandkid.name|capitalize}} = plan.{{grandkid.name|capitalize}}.ValueInt64Pointer()
