@@ -1,0 +1,150 @@
+{
+  "root": {
+    "name": "root",
+    "type": "container",
+    "kids": [
+      {
+        "name": "configuration",
+        "type": "container",
+        "kids": [
+          {
+            "name": "interfaces",
+            "type": "container",
+            "kids": [
+              {
+                "name": "interface",
+                "type": "list",
+                "key": "name",
+                "kids": [
+                  {
+                    "name": "name",
+                    "type": "leaf",
+                    "leaf-type": "string",
+                    "path": "interfaces/interface"
+                  },
+                  {
+                    "name": "description",
+                    "type": "leaf",
+                    "leaf-type": "string",
+                    "path": "interfaces/interface"
+                  },
+                  {
+                    "name": "vlan-tagging",
+                    "type": "leaf",
+                    "leaf-type": "empty",
+                    "path": "interfaces/interface"
+                  },
+                  {
+                    "name": "mtu",
+                    "type": "leaf",
+                    "leaf-type": "union",
+                    "types": [
+                      {
+                        "type": "string",
+                        "patterns": [
+                          "<.*>|$.*"
+                        ],
+                        "path": "interfaces/interface/mtu"
+                      },
+                      {
+                        "type": "uint32",
+                        "path": "interfaces/interface/mtu"
+                      }
+                    ],
+                    "path": "interfaces/interface"
+                  },
+                  {
+                    "name": "unit",
+                    "type": "list",
+                    "key": "name",
+                    "kids": [
+                      {
+                        "name": "name",
+                        "type": "leaf",
+                        "leaf-type": "string",
+                        "path": "interfaces/interface/unit"
+                      },
+                      {
+                        "name": "description",
+                        "type": "leaf",
+                        "leaf-type": "string",
+                        "path": "interfaces/interface/unit"
+                      },
+                      {
+                        "name": "vlan-id",
+                        "type": "leaf",
+                        "leaf-type": "string",
+                        "path": "interfaces/interface/unit"
+                      },
+                      {
+                        "name": "family",
+                        "type": "container",
+                        "kids": [
+                          {
+                            "name": "inet",
+                            "type": "container",
+                            "kids": [
+                              {
+                                "name": "address",
+                                "type": "list",
+                                "key": "name",
+                                "kids": [
+                                  {
+                                    "name": "name",
+                                    "type": "leaf",
+                                    "leaf-type": "jt:ipv4prefix",
+                                    "base-type": "string",
+                                    "path": "interfaces/interface/unit/family/inet/address"
+                                  }
+                                ],
+                                "ordered-by": "user",
+                                "path": "interfaces/interface/unit/family/inet"
+                              }
+                            ],
+                            "path": "interfaces/interface/unit/family"
+                          },
+                          {
+                            "name": "inet6",
+                            "type": "container",
+                            "kids": [
+                              {
+                                "name": "address",
+                                "type": "list",
+                                "key": "name",
+                                "kids": [
+                                  {
+                                    "name": "name",
+                                    "type": "leaf",
+                                    "leaf-type": "jt:ipv6prefix",
+                                    "base-type": "string",
+                                    "path": "interfaces/interface/unit/family/inet6/address"
+                                  }
+                                ],
+                                "ordered-by": "user",
+                                "path": "interfaces/interface/unit/family/inet6"
+                              }
+                            ],
+                            "path": "interfaces/interface/unit/family"
+                          }
+                        ],
+                        "path": "interfaces/interface/unit"
+                      }
+                    ],
+                    "path": "interfaces/interface"
+                  }
+                ],
+                "path": "interfaces"
+              }
+            ],
+            "path": ""
+          }
+        ],
+        "config": "true",
+        "path": ""
+      }
+    ],
+    "path": ""
+  },
+  "identities": [],
+  "path": ""
+}
