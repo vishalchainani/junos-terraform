@@ -165,6 +165,11 @@ func (o {{grandkid.name|capitalize}}Model) Attributes() map[string]schema.Attrib
 {{-result_list|join(".")-}}
 {%- endmacro -%}
 
+{%- macro get_parent_name(ele) -%}
+{%- set result_list = ele['path'].split("/")[1:]%}
+{{-result_list[-1]}}
+{%- endmacro %}
+
 {%- macro create_method_macro(parent_var, ele, first_ele) %}
 	{%- set parent_name = ele['path'].split("/")[-1] %}
 	{%- set kid_var = 'var_'+parent_name+"_"+ele.name %}
@@ -217,6 +222,44 @@ func (o {{grandkid.name|capitalize}}Model) Attributes() map[string]schema.Attrib
 	newstate.{{grandkid.name}} = types.StringPointerValue(config.Groups.{{ele.name|capitalize}}.{{grandkid.name|capitalize}})	
 	{%- endif %}
 	{%- endfor %}
+	{%- endif %}
+{%- endmacro %}
+
+{%- macro read_method_macro(ele, first_run)%}
+	{%- if first_run == 1 %}
+	state.{{ele.name|capitalize}} = types.ListNull(types.ObjectType{AttrTypes: {{ele.path|capitalize}}Model{}.AttrTypes()}) 
+	{{ele.name}}_List := make([]{{ele.name|capitalize}}Model, len(config.Groups.{{ele.name|capitalize}}))
+	for i_{{ele.name}}, v_{{ele.name}} := range config.Groups.{{ele.name|capitalize}} {
+	{%- else %}
+	{{ele.name}}_List := make([]{{ele.name|capitalize}}Model, len(v_{{get_parent_name(ele)}}.{{ele.name|capitalize}}))
+	for i_{{ele.name}}, v_{{ele.name}} := range v_{{get_parent_name(ele)}}.{{ele.name|capitalize}} {
+	{%- endif %}
+	var {{ele.name}}Model {{ele.name|capitalize}}Model
+	{%- if ele['kids'] %}
+	{%- for kid in ele['kids'] %}
+	{%- if kid['leaf-type'] == 'string' or kid['base-type'] == 'string'%}
+		{{ele.name}}Model.{{kid.name|capitalize|replace("-", "_")}} = types.StringPointerValue(v_{{ele.name}}.{{kid.name|capitalize|replace("-", "_")}})
+	{%- endif %}
+	{%- if kid['leaf-type'] == 'empty'%}
+		{{ele.name}}Model.{{kid.name|capitalize|replace("-", "_")}} = types.BoolValue(v_{{ele.name}}.{{kid.name|capitalize|replace("-", "_")}} != nil)
+	{%- endif %}
+	{%- if kid['leaf-type'] == 'union'%}
+		{{ele.name}}Model.{{kid.name|capitalize}} = types.Int64PointerValue(v_{{ele.name}}.{{kid.name|capitalize}})
+	{%- endif %}
+	{%- if ele['kids'] | length ==1 %}
+	{{ele.name}}_List[i_{{ele.name}}] = {{ele.name}}Model
+	{%- endif %}
+	{%- if (kid['type'] == 'list') or (kid['type'] == 'container') %}
+	{{read_method_macro(kid,0)}}
+	{%- endif %}
+	{%- endfor %}
+	{%- endif %}
+	}
+	{%- if first_run == 0%}
+	{{get_parent_name(ele)}}Model.{{ele.name|capitalize}}, _ = types.ListValueFrom(ctx, types.ObjectType{AttrTypes: {{ele.name|capitalize}}Model{}.AttrTypes()}, {{ele.name}}_List)
+	{{get_parent_name(ele)}}_List[i_{{get_parent_name(ele)}}] = {{get_parent_name(ele)}}Model
+	{%- else %}
+	state.{{ele.name|capitalize}}, _ = types.ListValueFrom(ctx, types.ObjectType{AttrTypes: {{ele.name|capitalize}}Model{}.AttrTypes()}, {{ele.name}}_List)
 	{%- endif %}
 {%- endmacro %}
 
@@ -423,7 +466,25 @@ func (r *resource{{parent.name|capitalize}}) Create(ctx context.Context, req res
 
 // Read implements resource.Resource.
 func (r *resource{{parent.name|capitalize}}) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
-	
+	// Get the data and set
+	var state {{parent.name|capitalize}}Model
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+	// Check for errors
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	var config xml{{parent.name|capitalize}}
+	err := r.client.MarshalGroup(state.ResourceName.ValueString(), &config)
+	if err != nil {
+		resp.Diagnostics.AddError("Failed while Reading", err.Error())
+		return
+	}
+	{%- for kid in parent['kids'] %}
+	{%- if kid['type'] == 'list' %}
+	{{read_method_macro(kid, 1)}}
+	{%- endif %}
+	{%- endfor %}
+	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
 // Update implements resource.Resource.

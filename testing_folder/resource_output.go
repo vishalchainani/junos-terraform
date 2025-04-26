@@ -3,46 +3,22 @@ package main
 import (
 	"context"
 	"encoding/xml"
-	"strings"
-
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"strings"
 )
 
 // Junos XML Hierarchy
 type xmlInterfaces struct {
 	XMLName xml.Name `xml:"configuration"`
 	Groups  struct {
-		XMLName   xml.Name `xml:"groups"`
-		Name      string   `xml:"name"`
-		Interface struct {
-			XMLName      xml.Name `xml:"interface"`
-			Name         *string  `xml:"name,omitempty"`
-			Description  *string  `xml:"description,omitempty"`
-			Vlan_tagging *string  `xml:"vlan-tagging,omitempty"`
-			Mtu          *int64   `xml:"mtu,omitempty"`
-			Unit         struct {
-				Name        *string `xml:"name,omitempty"`
-				Description *string `xml:"description,omitempty"`
-				Vlan_id     *string `xml:"vlan-id,omitempty"`
-				Family      struct {
-					Inet struct {
-						Address struct {
-							Name *string `xml:"name,omitempty"`
-						} `xml:"address"`
-					} `xml:"inet"`
-					Inet6 struct {
-						Address struct {
-							Name *string `xml:"name,omitempty"`
-						} `xml:"address"`
-					} `xml:"inet6"`
-				} `xml:"family"`
-			} `xml:"unit"`
-		} `xml:"interfaces>interface"`
+		XMLName   xml.Name                 `xml:"groups"`
+		Name      string                   `xml:"name"`
+		Interface []xmlInterfacesInterface `xml:"interfaces>interface"`
 	} `xml:"groups"`
 }
 type xmlInterfacesInterface struct {
@@ -85,11 +61,7 @@ type xmlInet6Address struct {
 // Collecting objects from the .tf file
 type InterfacesModel struct {
 	ResourceName types.String `tfsdk:"resource_name"`
-	Name         types.String `tfsdk:"name"`
-	Description  types.String `tfsdk:"description"`
-	Vlan_tagging types.Bool   `tfsdk:"vlan_tagging"`
-	Mtu          types.Int64  `tfsdk:"mtu"`
-	Unit         types.List   `tfsdk:"unit"`
+	Interface    types.List   `tfsdk:"interface"`
 }
 
 func (o InterfacesModel) AttrTypes() map[string]attr.Type {
@@ -97,7 +69,7 @@ func (o InterfacesModel) AttrTypes() map[string]attr.Type {
 		"interface": types.ListType{ElemType: types.ObjectType{AttrTypes: InterfaceModel{}.AttrTypes()}},
 	}
 }
-func (o InterfaceModel) Attributes() map[string]schema.Attribute {
+func (o InterfacesModel) Attributes() map[string]schema.Attribute {
 	return map[string]schema.Attribute{
 		"interface": schema.ListNestedAttribute{
 			Optional: true,
@@ -320,57 +292,88 @@ func (r *resourceInterfaces) Create(ctx context.Context, req resource.CreateRequ
 	if resp.Diagnostics.HasError() {
 		return
 	}
-
 	var config xmlInterfaces
 	config.Groups.Name = plan.ResourceName.ValueString()
-	config.Groups.Interface.Name = plan.Name.ValueStringPointer()
-	config.Groups.Interface.Description = plan.Description.ValueStringPointer()
-	if plan.Vlan_tagging.ValueBool() {
-		empty := ""
-		config.Groups.Interface.Vlan_tagging = &empty
-	}
-	config.Groups.Interface.Mtu = plan.Mtu.ValueInt64Pointer()
 
-	var var_interface_unit []UnitModel
-	resp.Diagnostics.Append(plan.Unit.ElementsAs(ctx, &var_interface_unit, false)...)
+	var var_interfaces_interface []InterfaceModel
+	resp.Diagnostics.Append(plan.Interface.ElementsAs(ctx, &var_interfaces_interface, false)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	config.Groups.Interface.Unit.Name = var_interface_unit[0].Name.ValueStringPointer()
-	config.Groups.Interface.Unit.Description = var_interface_unit[0].Description.ValueStringPointer()
-	config.Groups.Interface.Unit.Vlan_id = var_interface_unit[0].Vlan_id.ValueStringPointer()
+	config.Groups.Interface = make([]xmlInterfacesInterface, len(var_interfaces_interface))
+	for i_interface, v_interface := range var_interfaces_interface {
+		config.Groups.Interface[i_interface].Name = v_interface.Name.ValueStringPointer()
+		config.Groups.Interface[i_interface].Description = v_interface.Description.ValueStringPointer()
+		if v_interface.Vlan_tagging.ValueBool() {
+			empty := ""
+			config.Groups.Interface[i_interface].Vlan_tagging = &empty
+		}
+		config.Groups.Interface[i_interface].Mtu = v_interface.Mtu.ValueInt64Pointer()
 
-	var var_unit_family []FamilyModel
-	resp.Diagnostics.Append(var_interface_unit[0].Family.ElementsAs(ctx, &var_unit_family, false)...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
+		var var_interface_unit []UnitModel
+		resp.Diagnostics.Append(v_interface.Unit.ElementsAs(ctx, &var_interface_unit, false)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		config.Groups.Interface[i_interface].Unit = make([]xmlInterfaceUnit, len(var_interface_unit))
+		for i_unit, v_unit := range var_interface_unit {
+			config.Groups.Interface[i_interface].Unit[i_unit].Name = v_unit.Name.ValueStringPointer()
+			config.Groups.Interface[i_interface].Unit[i_unit].Description = v_unit.Description.ValueStringPointer()
+			config.Groups.Interface[i_interface].Unit[i_unit].Vlan_id = v_unit.Vlan_id.ValueStringPointer()
 
-	var var_family_inet []InetModel
-	resp.Diagnostics.Append(var_unit_family[0].Inet.ElementsAs(ctx, &var_family_inet, false)...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
+			var var_unit_family []FamilyModel
+			resp.Diagnostics.Append(v_unit.Family.ElementsAs(ctx, &var_unit_family, false)...)
+			if resp.Diagnostics.HasError() {
+				return
+			}
+			config.Groups.Interface[i_interface].Unit[i_unit].Family = make([]xmlUnitFamily, len(var_unit_family))
+			for i_family, v_family := range var_unit_family {
 
-	var var_inet_address []AddressModel
-	resp.Diagnostics.Append(var_family_inet[0].Address.ElementsAs(ctx, &var_inet_address, false)...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
-	config.Groups.Interface.Unit.Family.Inet.Address.Name = var_inet_address[0].Name.ValueStringPointer()
+				var var_family_inet []InetModel
+				resp.Diagnostics.Append(v_family.Inet.ElementsAs(ctx, &var_family_inet, false)...)
+				if resp.Diagnostics.HasError() {
+					return
+				}
+				config.Groups.Interface[i_interface].Unit[i_unit].Family[i_family].Inet = make([]xmlFamilyInet, len(var_family_inet))
+				for i_inet, v_inet := range var_family_inet {
 
-	var var_family_inet6 []Inet6Model
-	resp.Diagnostics.Append(var_unit_family[0].Inet6.ElementsAs(ctx, &var_family_inet6, false)...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
+					var var_inet_address []AddressModel
+					resp.Diagnostics.Append(v_inet.Address.ElementsAs(ctx, &var_inet_address, false)...)
+					if resp.Diagnostics.HasError() {
+						return
+					}
+					config.Groups.Interface[i_interface].Unit[i_unit].Family[i_family].Inet[i_inet].Address = make([]xmlInetAddress, len(var_inet_address))
+					for i_address, v_address := range var_inet_address {
+						config.Groups.Interface[i_interface].Unit[i_unit].Family[i_family].Inet[i_inet].Address[i_address].Name = v_address.Name.ValueStringPointer()
+					}
 
-	var var_inet6_address []AddressModel
-	resp.Diagnostics.Append(var_family_inet6[0].Address.ElementsAs(ctx, &var_inet6_address, false)...)
-	if resp.Diagnostics.HasError() {
-		return
+				}
+
+				var var_family_inet6 []Inet6Model
+				resp.Diagnostics.Append(v_family.Inet6.ElementsAs(ctx, &var_family_inet6, false)...)
+				if resp.Diagnostics.HasError() {
+					return
+				}
+				config.Groups.Interface[i_interface].Unit[i_unit].Family[i_family].Inet6 = make([]xmlFamilyInet6, len(var_family_inet6))
+				for i_inet6, v_inet6 := range var_family_inet6 {
+
+					var var_inet6_address []AddressModel
+					resp.Diagnostics.Append(v_inet6.Address.ElementsAs(ctx, &var_inet6_address, false)...)
+					if resp.Diagnostics.HasError() {
+						return
+					}
+					config.Groups.Interface[i_interface].Unit[i_unit].Family[i_family].Inet6[i_inet6].Address = make([]xmlInet6Address, len(var_inet6_address))
+					for i_address, v_address := range var_inet6_address {
+						config.Groups.Interface[i_interface].Unit[i_unit].Family[i_family].Inet6[i_inet6].Address[i_address].Name = v_address.Name.ValueStringPointer()
+					}
+
+				}
+
+			}
+
+		}
+
 	}
-	config.Groups.Interface.Unit.Family.Inet6.Address.Name = var_inet6_address[0].Name.ValueStringPointer()
 
 	err := r.client.SendTransaction("", config, false)
 	if err != nil {
@@ -382,7 +385,82 @@ func (r *resourceInterfaces) Create(ctx context.Context, req resource.CreateRequ
 
 // Read implements resource.Resource.
 func (r *resourceInterfaces) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+	// Get the data and set
+	var state InterfacesModel
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+	// Check for errors
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	var config xmlInterfaces
+	err := r.client.MarshalGroup(state.ResourceName.ValueString(), &config)
+	if err != nil {
+		resp.Diagnostics.AddError("Failed while Reading", err.Error())
+		return
+	}
 
+	state.Interface = types.ListNull(types.ObjectType{AttrTypes: InterfacesModel{}.AttrTypes()})
+	interface_List := make([]InterfaceModel, len(config.Groups.Interface))
+	for i_interface, v_interface := range config.Groups.Interface {
+		var interfaceModel InterfaceModel
+		interfaceModel.Name = types.StringPointerValue(v_interface.Name)
+		interfaceModel.Description = types.StringPointerValue(v_interface.Description)
+		interfaceModel.Vlan_tagging = types.BoolValue(v_interface.Vlan_tagging != nil)
+		interfaceModel.Mtu = types.Int64PointerValue(v_interface.Mtu)
+
+		unit_List := make([]UnitModel, len(v_interface.Unit))
+		for i_unit, v_unit := range v_interface.Unit {
+			var unitModel UnitModel
+			unitModel.Name = types.StringPointerValue(v_unit.Name)
+			unitModel.Description = types.StringPointerValue(v_unit.Description)
+			unitModel.Vlan_id = types.StringPointerValue(v_unit.Vlan_id)
+
+			family_List := make([]FamilyModel, len(v_unit.Family))
+			for i_family, v_family := range v_unit.Family {
+				var familyModel FamilyModel
+
+				inet_List := make([]InetModel, len(v_family.Inet))
+				for i_inet, v_inet := range v_family.Inet {
+					var inetModel InetModel
+					inet_List[i_inet] = inetModel
+
+					address_List := make([]AddressModel, len(v_inet.Address))
+					for i_address, v_address := range v_inet.Address {
+						var addressModel AddressModel
+						addressModel.Name = types.StringPointerValue(v_address.Name)
+						address_List[i_address] = addressModel
+					}
+					inetModel.Address, _ = types.ListValueFrom(ctx, types.ObjectType{AttrTypes: AddressModel{}.AttrTypes()}, address_List)
+					inet_List[i_inet] = inetModel
+				}
+				familyModel.Inet, _ = types.ListValueFrom(ctx, types.ObjectType{AttrTypes: InetModel{}.AttrTypes()}, inet_List)
+				family_List[i_family] = familyModel
+
+				inet6_List := make([]Inet6Model, len(v_family.Inet6))
+				for i_inet6, v_inet6 := range v_family.Inet6 {
+					var inet6Model Inet6Model
+					inet6_List[i_inet6] = inet6Model
+
+					address_List := make([]AddressModel, len(v_inet6.Address))
+					for i_address, v_address := range v_inet6.Address {
+						var addressModel AddressModel
+						addressModel.Name = types.StringPointerValue(v_address.Name)
+						address_List[i_address] = addressModel
+					}
+					inet6Model.Address, _ = types.ListValueFrom(ctx, types.ObjectType{AttrTypes: AddressModel{}.AttrTypes()}, address_List)
+					inet6_List[i_inet6] = inet6Model
+				}
+				familyModel.Inet6, _ = types.ListValueFrom(ctx, types.ObjectType{AttrTypes: Inet6Model{}.AttrTypes()}, inet6_List)
+				family_List[i_family] = familyModel
+			}
+			unitModel.Family, _ = types.ListValueFrom(ctx, types.ObjectType{AttrTypes: FamilyModel{}.AttrTypes()}, family_List)
+			unit_List[i_unit] = unitModel
+		}
+		interfaceModel.Unit, _ = types.ListValueFrom(ctx, types.ObjectType{AttrTypes: UnitModel{}.AttrTypes()}, unit_List)
+		interface_List[i_interface] = interfaceModel
+	}
+	state.Interface, _ = types.ListValueFrom(ctx, types.ObjectType{AttrTypes: InterfaceModel{}.AttrTypes()}, interface_List)
+	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
 // Update implements resource.Resource.
@@ -394,57 +472,88 @@ func (r *resourceInterfaces) Update(ctx context.Context, req resource.UpdateRequ
 	if resp.Diagnostics.HasError() {
 		return
 	}
-
 	var config xmlInterfaces
 	config.Groups.Name = plan.ResourceName.ValueString()
-	config.Groups.Interface.Name = plan.Name.ValueStringPointer()
-	config.Groups.Interface.Description = plan.Name.ValueStringPointer()
-	if plan.Vlan_tagging.ValueBool() {
-		empty := ""
-		config.Groups.Interface.Vlan_tagging = &empty
-	}
-	config.Groups.Interface.Mtu = plan.Mtu.ValueInt64Pointer()
 
-	var var_interface_unit []UnitModel
-	resp.Diagnostics.Append(plan.Unit.ElementsAs(ctx, &var_interface_unit, false)...)
+	var var_interfaces_interface []InterfaceModel
+	resp.Diagnostics.Append(plan.Interface.ElementsAs(ctx, &var_interfaces_interface, false)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	config.Groups.Interface.Unit.Name = var_interface_unit[0].Name.ValueStringPointer()
-	config.Groups.Interface.Unit.Description = var_interface_unit[0].Description.ValueStringPointer()
-	config.Groups.Interface.Unit.Vlan_id = var_interface_unit[0].Vlan_id.ValueStringPointer()
+	config.Groups.Interface = make([]xmlInterfacesInterface, len(var_interfaces_interface))
+	for i_interface, v_interface := range var_interfaces_interface {
+		config.Groups.Interface[i_interface].Name = v_interface.Name.ValueStringPointer()
+		config.Groups.Interface[i_interface].Description = v_interface.Description.ValueStringPointer()
+		if v_interface.Vlan_tagging.ValueBool() {
+			empty := ""
+			config.Groups.Interface[i_interface].Vlan_tagging = &empty
+		}
+		config.Groups.Interface[i_interface].Mtu = v_interface.Mtu.ValueInt64Pointer()
 
-	var var_unit_family []FamilyModel
-	resp.Diagnostics.Append(var_interface_unit[0].Family.ElementsAs(ctx, &var_unit_family, false)...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
+		var var_interface_unit []UnitModel
+		resp.Diagnostics.Append(v_interface.Unit.ElementsAs(ctx, &var_interface_unit, false)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		config.Groups.Interface[i_interface].Unit = make([]xmlInterfaceUnit, len(var_interface_unit))
+		for i_unit, v_unit := range var_interface_unit {
+			config.Groups.Interface[i_interface].Unit[i_unit].Name = v_unit.Name.ValueStringPointer()
+			config.Groups.Interface[i_interface].Unit[i_unit].Description = v_unit.Description.ValueStringPointer()
+			config.Groups.Interface[i_interface].Unit[i_unit].Vlan_id = v_unit.Vlan_id.ValueStringPointer()
 
-	var var_family_inet []InetModel
-	resp.Diagnostics.Append(var_unit_family[0].Inet.ElementsAs(ctx, &var_family_inet, false)...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
+			var var_unit_family []FamilyModel
+			resp.Diagnostics.Append(v_unit.Family.ElementsAs(ctx, &var_unit_family, false)...)
+			if resp.Diagnostics.HasError() {
+				return
+			}
+			config.Groups.Interface[i_interface].Unit[i_unit].Family = make([]xmlUnitFamily, len(var_unit_family))
+			for i_family, v_family := range var_unit_family {
 
-	var var_inet_address []AddressModel
-	resp.Diagnostics.Append(var_family_inet[0].Address.ElementsAs(ctx, &var_inet_address, false)...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
-	config.Groups.Interface.Unit.Family.Inet.Address.Name = var_inet_address[0].Name.ValueStringPointer()
+				var var_family_inet []InetModel
+				resp.Diagnostics.Append(v_family.Inet.ElementsAs(ctx, &var_family_inet, false)...)
+				if resp.Diagnostics.HasError() {
+					return
+				}
+				config.Groups.Interface[i_interface].Unit[i_unit].Family[i_family].Inet = make([]xmlFamilyInet, len(var_family_inet))
+				for i_inet, v_inet := range var_family_inet {
 
-	var var_family_inet6 []Inet6Model
-	resp.Diagnostics.Append(var_unit_family[0].Inet6.ElementsAs(ctx, &var_family_inet6, false)...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
+					var var_inet_address []AddressModel
+					resp.Diagnostics.Append(v_inet.Address.ElementsAs(ctx, &var_inet_address, false)...)
+					if resp.Diagnostics.HasError() {
+						return
+					}
+					config.Groups.Interface[i_interface].Unit[i_unit].Family[i_family].Inet[i_inet].Address = make([]xmlInetAddress, len(var_inet_address))
+					for i_address, v_address := range var_inet_address {
+						config.Groups.Interface[i_interface].Unit[i_unit].Family[i_family].Inet[i_inet].Address[i_address].Name = v_address.Name.ValueStringPointer()
+					}
 
-	var var_inet6_address []AddressModel
-	resp.Diagnostics.Append(var_family_inet6[0].Address.ElementsAs(ctx, &var_inet6_address, false)...)
-	if resp.Diagnostics.HasError() {
-		return
+				}
+
+				var var_family_inet6 []Inet6Model
+				resp.Diagnostics.Append(v_family.Inet6.ElementsAs(ctx, &var_family_inet6, false)...)
+				if resp.Diagnostics.HasError() {
+					return
+				}
+				config.Groups.Interface[i_interface].Unit[i_unit].Family[i_family].Inet6 = make([]xmlFamilyInet6, len(var_family_inet6))
+				for i_inet6, v_inet6 := range var_family_inet6 {
+
+					var var_inet6_address []AddressModel
+					resp.Diagnostics.Append(v_inet6.Address.ElementsAs(ctx, &var_inet6_address, false)...)
+					if resp.Diagnostics.HasError() {
+						return
+					}
+					config.Groups.Interface[i_interface].Unit[i_unit].Family[i_family].Inet6[i_inet6].Address = make([]xmlInet6Address, len(var_inet6_address))
+					for i_address, v_address := range var_inet6_address {
+						config.Groups.Interface[i_interface].Unit[i_unit].Family[i_family].Inet6[i_inet6].Address[i_address].Name = v_address.Name.ValueStringPointer()
+					}
+
+				}
+
+			}
+
+		}
+
 	}
-	config.Groups.Interface.Unit.Family.Inet6.Address.Name = var_inet6_address[0].Name.ValueStringPointer()
 
 	err := r.client.SendTransaction("", config, false)
 	if err != nil {
