@@ -456,7 +456,7 @@ func (r *resource{{parent.name|capitalize}}) Create(ctx context.Context, req res
 	{{create_method_macro(parent_var, kid, 1)}}
 	{%- endif %}
 	{%- endfor %}
-	err := r.client.SendTransaction("", config, false)
+	err := r.client.SendTransaction("", config, true)
 		if err != nil {
 			resp.Diagnostics.AddError("Failed while Sending", err.Error())
 			return
@@ -516,7 +516,17 @@ func (r *resource{{parent.name|capitalize}}) Update(ctx context.Context, req res
 	{{create_method_macro(parent_var, kid, 1)}}
 	{%- endif %}
 	{%- endfor %}
-	err := r.client.SendTransaction("", config, false)
+	
+	_, del_err := r.client.DeleteConfig(plan.ResourceName.ValueString(), false)
+	if del_err != nil {
+		if strings.Contains(del_err.Error(), "ound") {
+			return
+		}
+		resp.Diagnostics.AddError("Failed while deleting dile", del_err.Error())
+		return
+	}
+	
+	err := r.client.SendTransaction("", config, true)
 		if err != nil {
 			resp.Diagnostics.AddError("Failed while Sending", err.Error())
 			return

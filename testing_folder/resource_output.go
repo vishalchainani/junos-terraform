@@ -375,7 +375,7 @@ func (r *resourceInterfaces) Create(ctx context.Context, req resource.CreateRequ
 
 	}
 
-	err := r.client.SendTransaction("", config, false)
+	err := r.client.SendTransaction("", config, true)
 	if err != nil {
 		resp.Diagnostics.AddError("Failed while Sending", err.Error())
 		return
@@ -555,7 +555,16 @@ func (r *resourceInterfaces) Update(ctx context.Context, req resource.UpdateRequ
 
 	}
 
-	err := r.client.SendTransaction("", config, false)
+	_, del_err := r.client.DeleteConfig(plan.ResourceName.ValueString(), false)
+	if del_err != nil {
+		if strings.Contains(del_err.Error(), "ound") {
+			return
+		}
+		resp.Diagnostics.AddError("Failed while deleting dile", del_err.Error())
+		return
+	}
+
+	err := r.client.SendTransaction("", config, true)
 	if err != nil {
 		resp.Diagnostics.AddError("Failed while Sending", err.Error())
 		return
