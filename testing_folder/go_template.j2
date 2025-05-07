@@ -456,12 +456,17 @@ func (r *resource{{parent.name|capitalize}}) Create(ctx context.Context, req res
 	{{create_method_macro(parent_var, kid, 1)}}
 	{%- endif %}
 	{%- endfor %}
-	err := r.client.SendTransaction("", config, true)
-		if err != nil {
-			resp.Diagnostics.AddError("Failed while Sending", err.Error())
-			return
-		}
-		resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
+	err := r.client.SendTransaction(plan.ResourceName.ValueString(), config, false)
+	if err != nil {
+		resp.Diagnostics.AddError("Failed while adding group", err.Error())
+		return
+	}
+	commit_err := r.client.SendCommit()
+	if commit_err != nil {
+		resp.Diagnostics.AddError("Failed while committing apply-group", commit_err.Error())
+		return
+	}
+	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
 // Read implements resource.Resource.
@@ -517,21 +522,18 @@ func (r *resource{{parent.name|capitalize}}) Update(ctx context.Context, req res
 	{%- endif %}
 	{%- endfor %}
 	
-	_, del_err := r.client.DeleteConfig(plan.ResourceName.ValueString(), false)
-	if del_err != nil {
-		if strings.Contains(del_err.Error(), "ound") {
-			return
-		}
-		resp.Diagnostics.AddError("Failed while deleting dile", del_err.Error())
+	
+	err := r.client.SendTransaction(plan.ResourceName.ValueString(), config, false)
+	if err != nil {
+		resp.Diagnostics.AddError("Failed while Sending", err.Error())
 		return
 	}
-	
-	err := r.client.SendTransaction("", config, true)
-		if err != nil {
-			resp.Diagnostics.AddError("Failed while Sending", err.Error())
-			return
-		}
-		resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
+	commit_err := r.client.SendCommit()
+	if commit_err != nil {
+		resp.Diagnostics.AddError("Failed while committing apply-group", commit_err.Error())
+		return
+	}
+	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
 // Delete implements resource.Resource.
@@ -548,7 +550,7 @@ func (r *resource{{parent.name|capitalize}}) Delete(ctx context.Context, req res
 		if strings.Contains(err.Error(), "ound") {
 			return
 		}
-		resp.Diagnostics.AddError("Failed while deleting dile", err.Error())
+		resp.Diagnostics.AddError("Failed while deleting configuration", err.Error())
 		return
 	}
 }

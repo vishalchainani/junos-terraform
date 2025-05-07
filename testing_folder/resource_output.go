@@ -375,9 +375,14 @@ func (r *resourceInterfaces) Create(ctx context.Context, req resource.CreateRequ
 
 	}
 
-	err := r.client.SendTransaction("", config, true)
+	err := r.client.SendTransaction(plan.ResourceName.ValueString(), config, false)
 	if err != nil {
-		resp.Diagnostics.AddError("Failed while Sending", err.Error())
+		resp.Diagnostics.AddError("Failed while adding group", err.Error())
+		return
+	}
+	commit_err := r.client.SendCommit()
+	if commit_err != nil {
+		resp.Diagnostics.AddError("Failed while committing apply-group", commit_err.Error())
 		return
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
@@ -555,18 +560,14 @@ func (r *resourceInterfaces) Update(ctx context.Context, req resource.UpdateRequ
 
 	}
 
-	_, del_err := r.client.DeleteConfig(plan.ResourceName.ValueString(), false)
-	if del_err != nil {
-		if strings.Contains(del_err.Error(), "ound") {
-			return
-		}
-		resp.Diagnostics.AddError("Failed while deleting dile", del_err.Error())
-		return
-	}
-
-	err := r.client.SendTransaction("", config, true)
+	err := r.client.SendTransaction(plan.ResourceName.ValueString(), config, false)
 	if err != nil {
 		resp.Diagnostics.AddError("Failed while Sending", err.Error())
+		return
+	}
+	commit_err := r.client.SendCommit()
+	if commit_err != nil {
+		resp.Diagnostics.AddError("Failed while committing apply-group", commit_err.Error())
 		return
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
@@ -586,7 +587,7 @@ func (r *resourceInterfaces) Delete(ctx context.Context, req resource.DeleteRequ
 		if strings.Contains(err.Error(), "ound") {
 			return
 		}
-		resp.Diagnostics.AddError("Failed while deleting dile", err.Error())
+		resp.Diagnostics.AddError("Failed while deleting configuration", err.Error())
 		return
 	}
 }
