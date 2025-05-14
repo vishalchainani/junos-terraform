@@ -1,299 +1,281 @@
+
+
+
+
+
+
+
 package main
 
 import (
 	"context"
 	"encoding/xml"
+	"strings"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"strings"
 )
+
 
 // Junos XML Hierarchy
 
 type xml_Configuration struct {
 	XMLName xml.Name `xml:"configuration"`
-	Groups  struct {
-		XMLName    xml.Name         `xml:"groups"`
-		Name       *string          `xml:"name"`
-		Interfaces []xml_Interfaces `xml:"interfaces,omitempty"`
+	Groups struct {
+		XMLName xml.Name `xml:"groups"`
+		Name    *string   `xml:"name"`
+		Policy_options []xml_Policy_options `xml:"policy-options,omitempty"`
 	}
 }
-type xml_Interfaces struct {
-	XMLName   xml.Name                   `xml:"interfaces"`
-	Interface []xml_Interfaces_Interface `xml:"interface,omitempty"`
+type xml_Policy_options struct {
+	XMLName xml.Name `xml:"policy-options"`
+	Policy_statement []xml_Policy_options_Policy_statement `xml:"policy-statement,omitempty"`
+	Community []xml_Policy_options_Community `xml:"community,omitempty"`
 }
-type xml_Interfaces_Interface struct {
-	XMLName      xml.Name                        `xml:"interface"`
-	Name         *string                         `xml:"name,omitempty"`
-	Description  *string                         `xml:"description,omitempty"`
-	Vlan_tagging *string                         `xml:"vlan-tagging,omitempty"`
-	Mtu          *int64                          `xml:"mtu,omitempty"`
-	Unit         []xml_Interfaces_Interface_Unit `xml:"unit,omitempty"`
+type xml_Policy_options_Community struct {
+	XMLName xml.Name `xml:"community"`
+	Name         *string  `xml:"name,omitempty"`
+	Members         *string  `xml:"members,omitempty"`
 }
-type xml_Interfaces_Interface_Unit struct {
-	XMLName     xml.Name                               `xml:"unit"`
-	Name        *string                                `xml:"name,omitempty"`
-	Description *string                                `xml:"description,omitempty"`
-	Vlan_id     *string                                `xml:"vlan-id,omitempty"`
-	Family      []xml_Interfaces_Interface_Unit_Family `xml:"family,omitempty"`
-}
-type xml_Interfaces_Interface_Unit_Family struct {
-	XMLName xml.Name                                     `xml:"family"`
-	Inet    []xml_Interfaces_Interface_Unit_Family_Inet  `xml:"inet,omitempty"`
-	Inet6   []xml_Interfaces_Interface_Unit_Family_Inet6 `xml:"inet6,omitempty"`
-}
-type xml_Interfaces_Interface_Unit_Family_Inet struct {
-	XMLName xml.Name                                            `xml:"inet"`
-	Address []xml_Interfaces_Interface_Unit_Family_Inet_Address `xml:"address,omitempty"`
-}
-type xml_Interfaces_Interface_Unit_Family_Inet_Address struct {
-	XMLName xml.Name `xml:"address"`
-	Name    *string  `xml:"name,omitempty"`
-}
-type xml_Interfaces_Interface_Unit_Family_Inet6 struct {
-	XMLName xml.Name                                             `xml:"inet6"`
-	Address []xml_Interfaces_Interface_Unit_Family_Inet6_Address `xml:"address,omitempty"`
-}
-type xml_Interfaces_Interface_Unit_Family_Inet6_Address struct {
-	XMLName xml.Name `xml:"address"`
-	Name    *string  `xml:"name,omitempty"`
-}
+
+
+
 
 // Collecting objects from the .tf file
 type Groups_Model struct {
-	ResourceName types.String `tfsdk:"resource_name"`
-	Interfaces   types.List   `tfsdk:"interfaces"`
+	ResourceName	types.String `tfsdk:"resource_name"`
+	Policy_options types.List `tfsdk:"policy-options"`
 }
-
 func (o Groups_Model) AttrTypes() map[string]attr.Type {
 	return map[string]attr.Type{
-		"interfaces": types.ListType{ElemType: types.ObjectType{AttrTypes: Interfaces_Model{}.AttrTypes()}},
+		"policy-options": 	types.ListType{ElemType: types.ObjectType{AttrTypes: Policy_options_Model{}.AttrTypes()}},
 	}
 }
 func (o Groups_Model) Attributes() map[string]schema.Attribute {
 	return map[string]schema.Attribute{
 		"resource_name": schema.StringAttribute{
-			Required:            true,
+			Required: true,
 			MarkdownDescription: "xpath is `config.Groups.resource_name`",
 		},
-		"interfaces": schema.ListNestedAttribute{
+		"policy-options": schema.ListNestedAttribute{
 			Optional: true,
 			NestedObject: schema.NestedAttributeObject{
-				Attributes: Interfaces_Model{}.Attributes(),
+				Attributes: Policy_options_Model{}.Attributes(),
+			},
+		},
+	}
+}
+type Policy_options_Model struct {
+	Policy_statement	types.List `tfsdk:"policy-statement"`
+	Community	types.List `tfsdk:"community"`
+}
+func (o Policy_options_Model) AttrTypes() map[string]attr.Type {
+	return map[string]attr.Type{
+		"policy-statement": 	types.ListType{ElemType: types.ObjectType{AttrTypes: Policy_options_Policy_statement_Model{}.AttrTypes()}},
+		"community": 	types.ListType{ElemType: types.ObjectType{AttrTypes: Policy_options_Community_Model{}.AttrTypes()}},
+	}
+}
+func (o Policy_options_Model) Attributes() map[string]schema.Attribute {
+	return map[string]schema.Attribute{
+		"policy-statement": schema.ListNestedAttribute{
+			Optional: true,
+			NestedObject: schema.NestedAttributeObject{
+				Attributes: Policy_options_Policy_statement_Model{}.Attributes(),
+			},
+		},
+		"community": schema.ListNestedAttribute{
+			Optional: true,
+			NestedObject: schema.NestedAttributeObject{
+				Attributes: Policy_options_Community_Model{}.Attributes(),
 			},
 		},
 	}
 }
 
-type Interfaces_Model struct {
-	Interface types.List `tfsdk:"interface"`
-}
 
-func (o Interfaces_Model) AttrTypes() map[string]attr.Type {
+
+type Policy_options_Policy_statement_Model struct {
+	Name	types.String `tfsdk:"name"`
+	Term	types.List `tfsdk:"term"`
+	Then	types.List `tfsdk:"then"`
+}
+func (o Policy_options_Policy_statement_Model) AttrTypes() map[string]attr.Type {
 	return map[string]attr.Type{
-		"interface": types.ListType{ElemType: types.ObjectType{AttrTypes: Interfaces_Interface_Model{}.AttrTypes()}},
+	    "name": 	types.StringType,
+	    "term": 	types.ListType{ElemType: types.ObjectType{AttrTypes: Policy_options_Policy_statement_Term_Model{}.AttrTypes()}},
+	    "then": 	types.ListType{ElemType: types.ObjectType{AttrTypes: Policy_options_Policy_statement_Then_Model{}.AttrTypes()}},
 	}
 }
-func (o Interfaces_Model) Attributes() map[string]schema.Attribute {
+func (o Policy_options_Policy_statement_Model) Attributes() map[string]schema.Attribute {
 	return map[string]schema.Attribute{
-		"interface": schema.ListNestedAttribute{
-			Optional: true,
-			NestedObject: schema.NestedAttributeObject{
-				Attributes: Interfaces_Interface_Model{}.Attributes(),
-			},
-		},
-	}
+	    "name": schema.StringAttribute{
+		    Optional: true,
+		    MarkdownDescription: "xpath is `config.Groups.Name.Policy_statement`",
+	    },
+	    "term": schema.ListNestedAttribute{
+		    Optional: true,
+		    NestedObject: schema.NestedAttributeObject{
+			    Attributes: Policy_options_Policy_statement_Term_Model{}.Attributes(),
+	        },
+        },
+	    "then": schema.ListNestedAttribute{
+		    Optional: true,
+		    NestedObject: schema.NestedAttributeObject{
+			    Attributes: Policy_options_Policy_statement_Then_Model{}.Attributes(),
+	        },
+        },
+    }
 }
-
-type Interfaces_Interface_Model struct {
-	Name         types.String `tfsdk:"name"`
-	Description  types.String `tfsdk:"description"`
-	Vlan_tagging types.Bool   `tfsdk:"vlan_tagging"`
-	Mtu          types.Int64  `tfsdk:"mtu"`
-	Unit         types.List   `tfsdk:"unit"`
+type Policy_options_Community_Model struct {
+	Name	types.String `tfsdk:"name"`
+	Members	types.String `tfsdk:"members"`
 }
-
-func (o Interfaces_Interface_Model) AttrTypes() map[string]attr.Type {
+func (o Policy_options_Community_Model) AttrTypes() map[string]attr.Type {
 	return map[string]attr.Type{
-		"name":         types.StringType,
-		"description":  types.StringType,
-		"vlan_tagging": types.BoolType,
-		"mtu":          types.Int64Type,
-		"unit":         types.ListType{ElemType: types.ObjectType{AttrTypes: Interfaces_Interface_Unit_Model{}.AttrTypes()}},
+	    "name": 	types.StringType,
+	    "members": 	types.StringType,
 	}
 }
-func (o Interfaces_Interface_Model) Attributes() map[string]schema.Attribute {
+func (o Policy_options_Community_Model) Attributes() map[string]schema.Attribute {
 	return map[string]schema.Attribute{
-		"name": schema.StringAttribute{
-			Optional:            true,
-			MarkdownDescription: "xpath is `config.Groups.Name.Interface`",
-		},
-		"description": schema.StringAttribute{
-			Optional:            true,
-			MarkdownDescription: "xpath is `config.Groups.Description.Interface`",
-		},
-		"vlan_tagging": schema.BoolAttribute{
-			Optional:            true,
-			MarkdownDescription: "xpath is `config.Groups.Vlan-tagging.Interface`",
-		},
-		"mtu": schema.Int64Attribute{
-			Optional:            true,
-			MarkdownDescription: "xpath is `config.Groups.Mtu.Interface`",
-		},
-		"unit": schema.ListNestedAttribute{
-			Optional: true,
-			NestedObject: schema.NestedAttributeObject{
-				Attributes: Interfaces_Interface_Unit_Model{}.Attributes(),
-			},
-		},
-	}
+	    "name": schema.StringAttribute{
+		    Optional: true,
+		    MarkdownDescription: "xpath is `config.Groups.Name.Community`",
+	    },
+	    "members": schema.StringAttribute{
+		    Optional: true,
+		    MarkdownDescription: "xpath is `config.Groups.Members.Community`",
+	    },
+    }
 }
 
-type Interfaces_Interface_Unit_Model struct {
-	Name        types.String `tfsdk:"name"`
-	Description types.String `tfsdk:"description"`
-	Vlan_id     types.String `tfsdk:"vlan_id"`
-	Family      types.List   `tfsdk:"family"`
-}
 
-func (o Interfaces_Interface_Unit_Model) AttrTypes() map[string]attr.Type {
+type Policy_options_Policy_statement_Term_Model struct {
+	Name	types.String `tfsdk:"name"`
+	From	types.List `tfsdk:"from"`
+	Then	types.List `tfsdk:"then"`
+}
+func (o Policy_options_Policy_statement_Term_Model) AttrTypes() map[string]attr.Type {
 	return map[string]attr.Type{
-		"name":        types.StringType,
-		"description": types.StringType,
-		"vlan_id":     types.StringType,
-		"family":      types.ListType{ElemType: types.ObjectType{AttrTypes: Interfaces_Interface_Unit_Family_Model{}.AttrTypes()}},
+	    "name": 	types.StringType,
+	    "from": 	types.ListType{ElemType: types.ObjectType{AttrTypes: Policy_options_Policy_statement_Term_From_Model{}.AttrTypes()}},
+	    "then": 	types.ListType{ElemType: types.ObjectType{AttrTypes: Policy_options_Policy_statement_Term_Then_Model{}.AttrTypes()}},
 	}
 }
-func (o Interfaces_Interface_Unit_Model) Attributes() map[string]schema.Attribute {
+func (o Policy_options_Policy_statement_Term_Model) Attributes() map[string]schema.Attribute {
 	return map[string]schema.Attribute{
-		"name": schema.StringAttribute{
-			Optional:            true,
-			MarkdownDescription: "xpath is `config.Groups.Name.Unit`",
-		},
-		"description": schema.StringAttribute{
-			Optional:            true,
-			MarkdownDescription: "xpath is `config.Groups.Description.Unit`",
-		},
-		"vlan_id": schema.StringAttribute{
-			Optional:            true,
-			MarkdownDescription: "xpath is `config.Groups.Vlan-id.Unit`",
-		},
-		"family": schema.ListNestedAttribute{
-			Optional: true,
-			NestedObject: schema.NestedAttributeObject{
-				Attributes: Interfaces_Interface_Unit_Family_Model{}.Attributes(),
-			},
-		},
-	}
+	    "name": schema.StringAttribute{
+		    Optional: true,
+		    MarkdownDescription: "xpath is `config.Groups.Name.Term`",
+	    },
+	    "from": schema.ListNestedAttribute{
+		    Optional: true,
+		    NestedObject: schema.NestedAttributeObject{
+			    Attributes: Policy_options_Policy_statement_Term_From_Model{}.Attributes(),
+	        },
+        },
+	    "then": schema.ListNestedAttribute{
+		    Optional: true,
+		    NestedObject: schema.NestedAttributeObject{
+			    Attributes: Policy_options_Policy_statement_Term_Then_Model{}.Attributes(),
+	        },
+        },
+    }
 }
-
-type Interfaces_Interface_Unit_Family_Model struct {
-	Inet  types.List `tfsdk:"inet"`
-	Inet6 types.List `tfsdk:"inet6"`
+type Policy_options_Policy_statement_Then_Model struct {
+	Load_balance	types.List `tfsdk:"load-balance"`
 }
-
-func (o Interfaces_Interface_Unit_Family_Model) AttrTypes() map[string]attr.Type {
+func (o Policy_options_Policy_statement_Then_Model) AttrTypes() map[string]attr.Type {
 	return map[string]attr.Type{
-		"inet":  types.ListType{ElemType: types.ObjectType{AttrTypes: Interfaces_Interface_Unit_Family_Inet_Model{}.AttrTypes()}},
-		"inet6": types.ListType{ElemType: types.ObjectType{AttrTypes: Interfaces_Interface_Unit_Family_Inet6_Model{}.AttrTypes()}},
+	    "load-balance": 	types.ListType{ElemType: types.ObjectType{AttrTypes: Policy_options_Policy_statement_Then_Load_balance_Model{}.AttrTypes()}},
 	}
 }
-func (o Interfaces_Interface_Unit_Family_Model) Attributes() map[string]schema.Attribute {
+func (o Policy_options_Policy_statement_Then_Model) Attributes() map[string]schema.Attribute {
 	return map[string]schema.Attribute{
-		"inet": schema.ListNestedAttribute{
-			Optional: true,
-			NestedObject: schema.NestedAttributeObject{
-				Attributes: Interfaces_Interface_Unit_Family_Inet_Model{}.Attributes(),
-			},
-		},
-		"inet6": schema.ListNestedAttribute{
-			Optional: true,
-			NestedObject: schema.NestedAttributeObject{
-				Attributes: Interfaces_Interface_Unit_Family_Inet6_Model{}.Attributes(),
-			},
-		},
-	}
+	    "load-balance": schema.ListNestedAttribute{
+		    Optional: true,
+		    NestedObject: schema.NestedAttributeObject{
+			    Attributes: Policy_options_Policy_statement_Then_Load_balance_Model{}.Attributes(),
+	        },
+        },
+    }
 }
 
-type Interfaces_Interface_Unit_Family_Inet_Model struct {
-	Address types.List `tfsdk:"address"`
-}
 
-func (o Interfaces_Interface_Unit_Family_Inet_Model) AttrTypes() map[string]attr.Type {
+type Policy_options_Policy_statement_Term_From_Model struct {
+}
+func (o Policy_options_Policy_statement_Term_From_Model) AttrTypes() map[string]attr.Type {
 	return map[string]attr.Type{
-		"address": types.ListType{ElemType: types.ObjectType{AttrTypes: Interfaces_Interface_Unit_Family_Inet_Address_Model{}.AttrTypes()}},
 	}
 }
-func (o Interfaces_Interface_Unit_Family_Inet_Model) Attributes() map[string]schema.Attribute {
+func (o Policy_options_Policy_statement_Term_From_Model) Attributes() map[string]schema.Attribute {
 	return map[string]schema.Attribute{
-		"address": schema.ListNestedAttribute{
-			Optional: true,
-			NestedObject: schema.NestedAttributeObject{
-				Attributes: Interfaces_Interface_Unit_Family_Inet_Address_Model{}.Attributes(),
-			},
-		},
-	}
+    }
 }
-
-type Interfaces_Interface_Unit_Family_Inet6_Model struct {
-	Address types.List `tfsdk:"address"`
+type Policy_options_Policy_statement_Term_Then_Model struct {
+	Community	types.List `tfsdk:"community"`
+	Accept types.Bool `tfsdk:"accept"`
 }
-
-func (o Interfaces_Interface_Unit_Family_Inet6_Model) AttrTypes() map[string]attr.Type {
+func (o Policy_options_Policy_statement_Term_Then_Model) AttrTypes() map[string]attr.Type {
 	return map[string]attr.Type{
-		"address": types.ListType{ElemType: types.ObjectType{AttrTypes: Interfaces_Interface_Unit_Family_Inet6_Address_Model{}.AttrTypes()}},
+	    "community": 	types.ListType{ElemType: types.ObjectType{AttrTypes: Policy_options_Policy_statement_Term_Then_Community_Model{}.AttrTypes()}},
+	    "accept": 	types.BoolType,
 	}
 }
-func (o Interfaces_Interface_Unit_Family_Inet6_Model) Attributes() map[string]schema.Attribute {
+func (o Policy_options_Policy_statement_Term_Then_Model) Attributes() map[string]schema.Attribute {
 	return map[string]schema.Attribute{
-		"address": schema.ListNestedAttribute{
-			Optional: true,
-			NestedObject: schema.NestedAttributeObject{
-				Attributes: Interfaces_Interface_Unit_Family_Inet6_Address_Model{}.Attributes(),
-			},
-		},
-	}
+	    "community": schema.ListNestedAttribute{
+		    Optional: true,
+		    NestedObject: schema.NestedAttributeObject{
+			    Attributes: Policy_options_Policy_statement_Term_Then_Community_Model{}.Attributes(),
+	        },
+        },
+	    "accept": schema.BoolAttribute{
+		    Optional: true,
+		    MarkdownDescription: "xpath is `config.Groups.Accept.Then`",
+	    },
+    }
 }
-
-type Interfaces_Interface_Unit_Family_Inet_Address_Model struct {
-	Name types.String `tfsdk:"name"`
+type Policy_options_Policy_statement_Then_Load_balance_Model struct {
+	Per_packet types.Bool `tfsdk:"per-packet"`
 }
-
-func (o Interfaces_Interface_Unit_Family_Inet_Address_Model) AttrTypes() map[string]attr.Type {
+func (o Policy_options_Policy_statement_Then_Load_balance_Model) AttrTypes() map[string]attr.Type {
 	return map[string]attr.Type{
-		"name": types.StringType,
+	    "per-packet": 	types.BoolType,
 	}
 }
-func (o Interfaces_Interface_Unit_Family_Inet_Address_Model) Attributes() map[string]schema.Attribute {
+func (o Policy_options_Policy_statement_Then_Load_balance_Model) Attributes() map[string]schema.Attribute {
 	return map[string]schema.Attribute{
-		"name": schema.StringAttribute{
-			Optional:            true,
-			MarkdownDescription: "xpath is `config.Groups.Name.Address`",
-		},
-	}
+	    "per-packet": schema.BoolAttribute{
+		    Optional: true,
+		    MarkdownDescription: "xpath is `config.Groups.Per-packet.Load_balance`",
+	    },
+    }
 }
 
-type Interfaces_Interface_Unit_Family_Inet6_Address_Model struct {
-	Name types.String `tfsdk:"name"`
-}
 
-func (o Interfaces_Interface_Unit_Family_Inet6_Address_Model) AttrTypes() map[string]attr.Type {
+type Policy_options_Policy_statement_Term_Then_Community_Model struct {
+	Community_name	types.String `tfsdk:"community-name"`
+}
+func (o Policy_options_Policy_statement_Term_Then_Community_Model) AttrTypes() map[string]attr.Type {
 	return map[string]attr.Type{
-		"name": types.StringType,
+	    "community-name": 	types.StringType,
 	}
 }
-func (o Interfaces_Interface_Unit_Family_Inet6_Address_Model) Attributes() map[string]schema.Attribute {
+func (o Policy_options_Policy_statement_Term_Then_Community_Model) Attributes() map[string]schema.Attribute {
 	return map[string]schema.Attribute{
-		"name": schema.StringAttribute{
-			Optional:            true,
-			MarkdownDescription: "xpath is `config.Groups.Name.Address`",
-		},
-	}
+	    "community-name": schema.StringAttribute{
+		    Optional: true,
+		    MarkdownDescription: "xpath is `config.Groups.Community-name.Community`",
+	    },
+    }
 }
+
+
+
 
 // Collects the data for the crud work
 type resource_Apply_Groups struct {
@@ -306,12 +288,10 @@ func (r *resource_Apply_Groups) Configure(_ context.Context, req resource.Config
 	}
 	r.client = req.ProviderData.(ProviderConfig)
 }
-
 // Metadata implements resource.Resource.
 func (r *resource_Apply_Groups) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_Apply_Groups"
 }
-
 // Schema implements resource.Resource.
 func (r *resource_Apply_Groups) Schema(_ context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
@@ -320,19 +300,22 @@ func (r *resource_Apply_Groups) Schema(_ context.Context, req resource.SchemaReq
 				Required:      true,
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
-			"interfaces": schema.ListNestedAttribute{
+			"policy-options": schema.ListNestedAttribute{
 				Optional: true,
 				NestedObject: schema.NestedAttributeObject{
-					Attributes: Interfaces_Model{}.Attributes(),
+					Attributes: Policy_options_Model{}.Attributes(),
 				},
 			},
 		},
 	}
 }
 
+
+
+
 // Create implements resource.Resource.
 func (r *resource_Apply_Groups) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
-
+	
 	var plan Groups_Model
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
 	// Check for errors
@@ -341,88 +324,99 @@ func (r *resource_Apply_Groups) Create(ctx context.Context, req resource.CreateR
 	}
 	var config xml_Configuration
 	config.Groups.Name = plan.ResourceName.ValueStringPointer()
-
-	var var_interfaces []Interfaces_Model
-	if plan.Interfaces.IsNull() {
-		var_interfaces = []Interfaces_Model{}
-	} else {
-		resp.Diagnostics.Append(plan.Interfaces.ElementsAs(ctx, &var_interfaces, false)...)
-		if resp.Diagnostics.HasError() {
-			return
-		}
-	}
-	config.Groups.Interfaces = make([]xml_Interfaces, len(var_interfaces))
-	for i_interfaces, v_interfaces := range var_interfaces {
-		var var_interfaces_interface []Interfaces_Interface_Model
-		resp.Diagnostics.Append(v_interfaces.Interface.ElementsAs(ctx, &var_interfaces_interface, false)...)
-		if resp.Diagnostics.HasError() {
-			return
-		}
-		config.Groups.Interfaces[i_interfaces].Interface = make([]xml_Interfaces_Interface, len(var_interfaces_interface))
-		for i_interfaces_interface, v_interfaces_interface := range var_interfaces_interface {
-			config.Groups.Interfaces[i_interfaces].Interface[i_interfaces_interface].Name = v_interfaces_interface.Name.ValueStringPointer()
-			config.Groups.Interfaces[i_interfaces].Interface[i_interfaces_interface].Description = v_interfaces_interface.Description.ValueStringPointer()
-			if v_interfaces_interface.Vlan_tagging.ValueBool() {
-				empty := ""
-				config.Groups.Interfaces[i_interfaces].Interface[i_interfaces_interface].Vlan_tagging = &empty
-			}
-			config.Groups.Interfaces[i_interfaces].Interface[i_interfaces_interface].Mtu = v_interfaces_interface.Mtu.ValueInt64Pointer()
-			var var_interfaces_interface_unit []Interfaces_Interface_Unit_Model
-			resp.Diagnostics.Append(v_interfaces_interface.Unit.ElementsAs(ctx, &var_interfaces_interface_unit, false)...)
-			if resp.Diagnostics.HasError() {
-				return
-			}
-			config.Groups.Interfaces[i_interfaces].Interface[i_interfaces_interface].Unit = make([]xml_Interfaces_Interface_Unit, len(var_interfaces_interface_unit))
-			for i_interfaces_interface_unit, v_interfaces_interface_unit := range var_interfaces_interface_unit {
-				config.Groups.Interfaces[i_interfaces].Interface[i_interfaces_interface].Unit[i_interfaces_interface_unit].Name = v_interfaces_interface_unit.Name.ValueStringPointer()
-				config.Groups.Interfaces[i_interfaces].Interface[i_interfaces_interface].Unit[i_interfaces_interface_unit].Description = v_interfaces_interface_unit.Description.ValueStringPointer()
-				config.Groups.Interfaces[i_interfaces].Interface[i_interfaces_interface].Unit[i_interfaces_interface_unit].Vlan_id = v_interfaces_interface_unit.Vlan_id.ValueStringPointer()
-				var var_interfaces_interface_unit_family []Interfaces_Interface_Unit_Family_Model
-				resp.Diagnostics.Append(v_interfaces_interface_unit.Family.ElementsAs(ctx, &var_interfaces_interface_unit_family, false)...)
-				if resp.Diagnostics.HasError() {
-					return
-				}
-				config.Groups.Interfaces[i_interfaces].Interface[i_interfaces_interface].Unit[i_interfaces_interface_unit].Family = make([]xml_Interfaces_Interface_Unit_Family, len(var_interfaces_interface_unit_family))
-				for i_interfaces_interface_unit_family, v_interfaces_interface_unit_family := range var_interfaces_interface_unit_family {
-					var var_interfaces_interface_unit_family_inet []Interfaces_Interface_Unit_Family_Inet_Model
-					resp.Diagnostics.Append(v_interfaces_interface_unit_family.Inet.ElementsAs(ctx, &var_interfaces_interface_unit_family_inet, false)...)
-					if resp.Diagnostics.HasError() {
-						return
-					}
-					config.Groups.Interfaces[i_interfaces].Interface[i_interfaces_interface].Unit[i_interfaces_interface_unit].Family[i_interfaces_interface_unit_family].Inet = make([]xml_Interfaces_Interface_Unit_Family_Inet, len(var_interfaces_interface_unit_family_inet))
-					for i_interfaces_interface_unit_family_inet, v_interfaces_interface_unit_family_inet := range var_interfaces_interface_unit_family_inet {
-						var var_interfaces_interface_unit_family_inet_address []Interfaces_Interface_Unit_Family_Inet_Address_Model
-						resp.Diagnostics.Append(v_interfaces_interface_unit_family_inet.Address.ElementsAs(ctx, &var_interfaces_interface_unit_family_inet_address, false)...)
-						if resp.Diagnostics.HasError() {
-							return
-						}
-						config.Groups.Interfaces[i_interfaces].Interface[i_interfaces_interface].Unit[i_interfaces_interface_unit].Family[i_interfaces_interface_unit_family].Inet[i_interfaces_interface_unit_family_inet].Address = make([]xml_Interfaces_Interface_Unit_Family_Inet_Address, len(var_interfaces_interface_unit_family_inet_address))
-						for i_interfaces_interface_unit_family_inet_address, v_interfaces_interface_unit_family_inet_address := range var_interfaces_interface_unit_family_inet_address {
-							config.Groups.Interfaces[i_interfaces].Interface[i_interfaces_interface].Unit[i_interfaces_interface_unit].Family[i_interfaces_interface_unit_family].Inet[i_interfaces_interface_unit_family_inet].Address[i_interfaces_interface_unit_family_inet_address].Name = v_interfaces_interface_unit_family_inet_address.Name.ValueStringPointer()
-						}
-					}
-					var var_interfaces_interface_unit_family_inet6 []Interfaces_Interface_Unit_Family_Inet6_Model
-					resp.Diagnostics.Append(v_interfaces_interface_unit_family.Inet6.ElementsAs(ctx, &var_interfaces_interface_unit_family_inet6, false)...)
-					if resp.Diagnostics.HasError() {
-						return
-					}
-					config.Groups.Interfaces[i_interfaces].Interface[i_interfaces_interface].Unit[i_interfaces_interface_unit].Family[i_interfaces_interface_unit_family].Inet6 = make([]xml_Interfaces_Interface_Unit_Family_Inet6, len(var_interfaces_interface_unit_family_inet6))
-					for i_interfaces_interface_unit_family_inet6, v_interfaces_interface_unit_family_inet6 := range var_interfaces_interface_unit_family_inet6 {
-						var var_interfaces_interface_unit_family_inet6_address []Interfaces_Interface_Unit_Family_Inet6_Address_Model
-						resp.Diagnostics.Append(v_interfaces_interface_unit_family_inet6.Address.ElementsAs(ctx, &var_interfaces_interface_unit_family_inet6_address, false)...)
-						if resp.Diagnostics.HasError() {
-							return
-						}
-						config.Groups.Interfaces[i_interfaces].Interface[i_interfaces_interface].Unit[i_interfaces_interface_unit].Family[i_interfaces_interface_unit_family].Inet6[i_interfaces_interface_unit_family_inet6].Address = make([]xml_Interfaces_Interface_Unit_Family_Inet6_Address, len(var_interfaces_interface_unit_family_inet6_address))
-						for i_interfaces_interface_unit_family_inet6_address, v_interfaces_interface_unit_family_inet6_address := range var_interfaces_interface_unit_family_inet6_address {
-							config.Groups.Interfaces[i_interfaces].Interface[i_interfaces_interface].Unit[i_interfaces_interface_unit].Family[i_interfaces_interface_unit_family].Inet6[i_interfaces_interface_unit_family_inet6].Address[i_interfaces_interface_unit_family_inet6_address].Name = v_interfaces_interface_unit_family_inet6_address.Name.ValueStringPointer()
-						}
-					}
-				}
-			}
-		}
-	}
-
+    
+	
+    var var_policy_options []Policy_options_Model
+    if plan.Policy_options.IsNull() {
+        var_policy_options = []Policy_options_Model{}
+    }else {
+        resp.Diagnostics.Append(plan.Policy_options.ElementsAs(ctx, &var_policy_options, false)...)
+        if resp.Diagnostics.HasError() {
+            return
+        }
+    }
+    config.Groups.Policy_options = make([]xml_Policy_options, len(var_policy_options))
+    for i_policy_options, v_policy_options := range var_policy_options {
+        var var_policy_options_policy_statement []Policy_options_Policy_statement_Model
+        resp.Diagnostics.Append(v_policy-options.Policy_statement.ElementsAs(ctx, &var_policy_options_policy_statement, false)...)
+        if resp.Diagnostics.HasError() {
+            return
+        }
+	    config.Groups.Policy_options[i_policy_options].Policy_statement = make([]xml_Policy_options_Policy_statement, len(var_policy_options_policy_statement))
+        for i_policy_options_policy_statement, v_policy_options_policy_statement := range var_policy_options_policy_statement {
+            config.Groups.Policy_options[i_policy_options].Policy_statement[i_policy_options_policy_statement].Name = v_policy_options_policy_statement.Name.ValueStringPointer()
+            var var_policy_options_policy_statement_term []Policy_options_Policy_statement_Term_Model
+            resp.Diagnostics.Append(v_policy_options_policy_statement.Term.ElementsAs(ctx, &var_policy_options_policy_statement_term, false)...)
+            if resp.Diagnostics.HasError() {
+                return
+            }
+	    config.Groups.Policy_options[i_policy_options].Policy_statement[i_policy_options_policy_statement].Term = make([]xml_Policy_options_Policy_statement_Term, len(var_policy_options_policy_statement_term))
+        for i_policy_options_policy_statement_term, v_policy_options_policy_statement_term := range var_policy_options_policy_statement_term {
+            config.Groups.Policy_options[i_policy_options].Policy_statement[i_policy_options_policy_statement].Term[i_policy_options_policy_statement_term].Name = v_policy_options_policy_statement_term.Name.ValueStringPointer()
+            var var_policy_options_policy_statement_term_from []Policy_options_Policy_statement_Term_From_Model
+            resp.Diagnostics.Append(v_policy_options_policy_statement_term.From.ElementsAs(ctx, &var_policy_options_policy_statement_term_from, false)...)
+            if resp.Diagnostics.HasError() {
+                return
+            }
+	    config.Groups.Policy_options[i_policy_options].Policy_statement[i_policy_options_policy_statement].Term[i_policy_options_policy_statement_term].From = make([]xml_Policy_options_Policy_statement_Term_From, len(var_policy_options_policy_statement_term_from))
+        for i_policy_options_policy_statement_term_from, v_policy_options_policy_statement_term_from := range var_policy_options_policy_statement_term_from {
+        }
+            var var_policy_options_policy_statement_term_then []Policy_options_Policy_statement_Term_Then_Model
+            resp.Diagnostics.Append(v_policy_options_policy_statement_term.Then.ElementsAs(ctx, &var_policy_options_policy_statement_term_then, false)...)
+            if resp.Diagnostics.HasError() {
+                return
+            }
+	    config.Groups.Policy_options[i_policy_options].Policy_statement[i_policy_options_policy_statement].Term[i_policy_options_policy_statement_term].Then = make([]xml_Policy_options_Policy_statement_Term_Then, len(var_policy_options_policy_statement_term_then))
+        for i_policy_options_policy_statement_term_then, v_policy_options_policy_statement_term_then := range var_policy_options_policy_statement_term_then {
+            var var_policy_options_policy_statement_term_then_community []Policy_options_Policy_statement_Term_Then_Community_Model
+            resp.Diagnostics.Append(v_policy_options_policy_statement_term_then.Community.ElementsAs(ctx, &var_policy_options_policy_statement_term_then_community, false)...)
+            if resp.Diagnostics.HasError() {
+                return
+            }
+	    config.Groups.Policy_options[i_policy_options].Policy_statement[i_policy_options_policy_statement].Term[i_policy_options_policy_statement_term].Then[i_policy_options_policy_statement_term_then].Community = make([]xml_Policy_options_Policy_statement_Term_Then_Community, len(var_policy_options_policy_statement_term_then_community))
+        for i_policy_options_policy_statement_term_then_community, v_policy_options_policy_statement_term_then_community := range var_policy_options_policy_statement_term_then_community {
+            config.Groups.Policy_options[i_policy_options].Policy_statement[i_policy_options_policy_statement].Term[i_policy_options_policy_statement_term].Then[i_policy_options_policy_statement_term_then].Community[i_policy_options_policy_statement_term_then_community].Community_name = v_policy_options_policy_statement_term_then_community.Community_name.ValueStringPointer()
+        }
+            if v_policy_options_policy_statement_term_then.Accept.ValueBool() {
+                empty := ""
+                config.Groups.Policy_options[i_policy_options].Policy_statement[i_policy_options_policy_statement].Term[i_policy_options_policy_statement_term].Then[i_policy_options_policy_statement_term_then].Accept = &empty
+            }
+        }
+        }
+            var var_policy_options_policy_statement_then []Policy_options_Policy_statement_Then_Model
+            resp.Diagnostics.Append(v_policy_options_policy_statement.Then.ElementsAs(ctx, &var_policy_options_policy_statement_then, false)...)
+            if resp.Diagnostics.HasError() {
+                return
+            }
+	    config.Groups.Policy_options[i_policy_options].Policy_statement[i_policy_options_policy_statement].Then = make([]xml_Policy_options_Policy_statement_Then, len(var_policy_options_policy_statement_then))
+        for i_policy_options_policy_statement_then, v_policy_options_policy_statement_then := range var_policy_options_policy_statement_then {
+            var var_policy_options_policy_statement_then_load_balance []Policy_options_Policy_statement_Then_Load_balance_Model
+            resp.Diagnostics.Append(v_policy_options_policy_statement_then.Load_balance.ElementsAs(ctx, &var_policy_options_policy_statement_then_load_balance, false)...)
+            if resp.Diagnostics.HasError() {
+                return
+            }
+	    config.Groups.Policy_options[i_policy_options].Policy_statement[i_policy_options_policy_statement].Then[i_policy_options_policy_statement_then].Load_balance = make([]xml_Policy_options_Policy_statement_Then_Load_balance, len(var_policy_options_policy_statement_then_load_balance))
+        for i_policy_options_policy_statement_then_load_balance, v_policy_options_policy_statement_then_load_balance := range var_policy_options_policy_statement_then_load_balance {
+            if v_policy_options_policy_statement_then_load_balance.Per_packet.ValueBool() {
+                empty := ""
+                config.Groups.Policy_options[i_policy_options].Policy_statement[i_policy_options_policy_statement].Then[i_policy_options_policy_statement_then].Load_balance[i_policy_options_policy_statement_then_load_balance].Per_packet = &empty
+            }
+        }
+        }
+        }
+    for i_policy_options, v_policy_options := range var_policy_options {
+        var var_policy_options_community []Policy_options_Community_Model
+        resp.Diagnostics.Append(v_policy-options.Community.ElementsAs(ctx, &var_policy_options_community, false)...)
+        if resp.Diagnostics.HasError() {
+            return
+        }
+	    config.Groups.Policy_options[i_policy_options].Community = make([]xml_Policy_options_Community, len(var_policy_options_community))
+        for i_policy_options_community, v_policy_options_community := range var_policy_options_community {
+            config.Groups.Policy_options[i_policy_options].Community[i_policy_options_community].Name = v_policy_options_community.Name.ValueStringPointer()
+            config.Groups.Policy_options[i_policy_options].Community[i_policy_options_community].Members = v_policy_options_community.Members.ValueStringPointer()
+        }
+    }
+	
 	err := r.client.SendTransaction(plan.ResourceName.ValueString(), config, false)
 	if err != nil {
 		resp.Diagnostics.AddError("Failed while adding group", err.Error())
@@ -436,93 +430,104 @@ func (r *resource_Apply_Groups) Create(ctx context.Context, req resource.CreateR
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
+
+
+
 func (r *resource_Apply_Groups) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+    
+    var state Groups_Model
+    resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+    if resp.Diagnostics.HasError() {
+        return
+    }
 
-	var state Groups_Model
-	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
-
-	var config xml_Configuration
-	err := r.client.MarshalGroup(state.ResourceName.ValueString(), &config)
-	if err != nil {
-		resp.Diagnostics.AddError("Failed to read group", err.Error())
-		return
-	}
-	state.Interfaces = types.ListNull(types.ObjectType{AttrTypes: Groups_Model{}.AttrTypes()})
-	interfaces_List := make([]Interfaces_Model, len(config.Groups.Interfaces))
-	for i_interfaces, v_interfaces := range config.Groups.Interfaces {
-		var interfaces_model Interfaces_Model
-		interfaces_interface_List := make([]Interfaces_Interface_Model, len(v_interfaces.Interface))
-		for i_interfaces_interface, v_interfaces_interface := range v_interfaces.Interface {
-			var interfaces_interface_model Interfaces_Interface_Model
-			interfaces_interface_model.Name = types.StringPointerValue(v_interfaces_interface.Name)
-			interfaces_interface_model.Description = types.StringPointerValue(v_interfaces_interface.Description)
-			interfaces_interface_model.Vlan_tagging = types.BoolValue(v_interfaces_interface.Vlan_tagging != nil)
-			interfaces_interface_model.Mtu = types.Int64PointerValue(v_interfaces_interface.Mtu)
-
-			interfaces_interface_unit_List := make([]Interfaces_Interface_Unit_Model, len(v_interfaces_interface.Unit))
-			for i_interfaces_interface_unit, v_interfaces_interface_unit := range v_interfaces_interface.Unit {
-				var interfaces_interface_unit_model Interfaces_Interface_Unit_Model
-				interfaces_interface_unit_model.Name = types.StringPointerValue(v_interfaces_interface_unit.Name)
-				interfaces_interface_unit_model.Description = types.StringPointerValue(v_interfaces_interface_unit.Description)
-				interfaces_interface_unit_model.Vlan_id = types.StringPointerValue(v_interfaces_interface_unit.Vlan_id)
-
-				interfaces_interface_unit_family_List := make([]Interfaces_Interface_Unit_Family_Model, len(v_interfaces_interface_unit.Family))
-				for i_interfaces_interface_unit_family, v_interfaces_interface_unit_family := range v_interfaces_interface_unit.Family {
-					var interfaces_interface_unit_family_model Interfaces_Interface_Unit_Family_Model
-
-					interfaces_interface_unit_family_inet_List := make([]Interfaces_Interface_Unit_Family_Inet_Model, len(v_interfaces_interface_unit_family.Inet))
-					for i_interfaces_interface_unit_family_inet, v_interfaces_interface_unit_family_inet := range v_interfaces_interface_unit_family.Inet {
-						var interfaces_interface_unit_family_inet_model Interfaces_Interface_Unit_Family_Inet_Model
-						interfaces_interface_unit_family_inet_List[i_interfaces_interface_unit_family_inet] = interfaces_interface_unit_family_inet_model
-
-						interfaces_interface_unit_family_inet_address_List := make([]Interfaces_Interface_Unit_Family_Inet_Address_Model, len(v_interfaces_interface_unit_family_inet.Address))
-						for i_interfaces_interface_unit_family_inet_address, v_interfaces_interface_unit_family_inet_address := range v_interfaces_interface_unit_family_inet.Address {
-							var interfaces_interface_unit_family_inet_address_model Interfaces_Interface_Unit_Family_Inet_Address_Model
-							interfaces_interface_unit_family_inet_address_model.Name = types.StringPointerValue(v_interfaces_interface_unit_family_inet_address.Name)
-							interfaces_interface_unit_family_inet_address_List[i_interfaces_interface_unit_family_inet_address] = interfaces_interface_unit_family_inet_address_model
-						}
-						interfaces_interface_unit_family_inet_model.Address, _ = types.ListValueFrom(ctx, types.ObjectType{AttrTypes: Interfaces_Interface_Unit_Family_Inet_Address_Model{}.AttrTypes()}, interfaces_interface_unit_family_inet_address_List)
-						interfaces_interface_unit_family_inet_List[i_interfaces_interface_unit_family_inet] = interfaces_interface_unit_family_inet_model
-					}
-					interfaces_interface_unit_family_model.Inet, _ = types.ListValueFrom(ctx, types.ObjectType{AttrTypes: Interfaces_Interface_Unit_Family_Inet_Model{}.AttrTypes()}, interfaces_interface_unit_family_inet_List)
-					interfaces_interface_unit_family_List[i_interfaces_interface_unit_family] = interfaces_interface_unit_family_model
-
-					interfaces_interface_unit_family_inet6_List := make([]Interfaces_Interface_Unit_Family_Inet6_Model, len(v_interfaces_interface_unit_family.Inet6))
-					for i_interfaces_interface_unit_family_inet6, v_interfaces_interface_unit_family_inet6 := range v_interfaces_interface_unit_family.Inet6 {
-						var interfaces_interface_unit_family_inet6_model Interfaces_Interface_Unit_Family_Inet6_Model
-						interfaces_interface_unit_family_inet6_List[i_interfaces_interface_unit_family_inet6] = interfaces_interface_unit_family_inet6_model
-
-						interfaces_interface_unit_family_inet6_address_List := make([]Interfaces_Interface_Unit_Family_Inet6_Address_Model, len(v_interfaces_interface_unit_family_inet6.Address))
-						for i_interfaces_interface_unit_family_inet6_address, v_interfaces_interface_unit_family_inet6_address := range v_interfaces_interface_unit_family_inet6.Address {
-							var interfaces_interface_unit_family_inet6_address_model Interfaces_Interface_Unit_Family_Inet6_Address_Model
-							interfaces_interface_unit_family_inet6_address_model.Name = types.StringPointerValue(v_interfaces_interface_unit_family_inet6_address.Name)
-							interfaces_interface_unit_family_inet6_address_List[i_interfaces_interface_unit_family_inet6_address] = interfaces_interface_unit_family_inet6_address_model
-						}
-						interfaces_interface_unit_family_inet6_model.Address, _ = types.ListValueFrom(ctx, types.ObjectType{AttrTypes: Interfaces_Interface_Unit_Family_Inet6_Address_Model{}.AttrTypes()}, interfaces_interface_unit_family_inet6_address_List)
-						interfaces_interface_unit_family_inet6_List[i_interfaces_interface_unit_family_inet6] = interfaces_interface_unit_family_inet6_model
-					}
-					interfaces_interface_unit_family_model.Inet6, _ = types.ListValueFrom(ctx, types.ObjectType{AttrTypes: Interfaces_Interface_Unit_Family_Inet6_Model{}.AttrTypes()}, interfaces_interface_unit_family_inet6_List)
-					interfaces_interface_unit_family_List[i_interfaces_interface_unit_family] = interfaces_interface_unit_family_model
-				}
-				interfaces_interface_unit_model.Family, _ = types.ListValueFrom(ctx, types.ObjectType{AttrTypes: Interfaces_Interface_Unit_Family_Model{}.AttrTypes()}, interfaces_interface_unit_family_List)
-				interfaces_interface_unit_List[i_interfaces_interface_unit] = interfaces_interface_unit_model
-			}
-			interfaces_interface_model.Unit, _ = types.ListValueFrom(ctx, types.ObjectType{AttrTypes: Interfaces_Interface_Unit_Model{}.AttrTypes()}, interfaces_interface_unit_List)
-			interfaces_interface_List[i_interfaces_interface] = interfaces_interface_model
-		}
-		interfaces_model.Interface, _ = types.ListValueFrom(ctx, types.ObjectType{AttrTypes: Interfaces_Interface_Model{}.AttrTypes()}, interfaces_interface_List)
-		interfaces_List[i_interfaces] = interfaces_model
-	}
-	state.Interfaces, _ = types.ListValueFrom(ctx, types.ObjectType{AttrTypes: Interfaces_Model{}.AttrTypes()}, interfaces_List)
-	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
+    var config xml_Configuration
+    err := r.client.MarshalGroup(state.ResourceName.ValueString(), &config)
+    if err != nil {
+        resp.Diagnostics.AddError("Failed to read group", err.Error())
+        return
+    }
+    state.Policy_options = types.ListNull(types.ObjectType{AttrTypes: Groups_Model{}.AttrTypes()})
+    policy_options_List := make([]Policy_options_Model, len(config.Groups.Policy_options))
+    for i_policy_options, v_policy_options := range config.Groups.Policy_options {
+        var policy_options_model Policy_options_Model
+        policy_options_policy_statement_List := make([]Policy_options_Policy_statement_Model, len(v_policy_options.Policy_statement))
+        for i_policy_options_policy_statement, v_policy_options_policy_statement := range v_policy_options.Policy_statement {
+            var policy_options_policy_statement_model Policy_options_Policy_statement_Model
+            policy_options_policy_statement_model.Name = types.StringPointerValue(v_policy_options_policy_statement.Name)
+                
+        policy_options_policy_statement_term_List := make([]Policy_options_Policy_statement_Term_Model, len(v_policy_options_policy_statement.Term))
+        for i_policy_options_policy_statement_term, v_policy_options_policy_statement_term := range v_policy_options_policy_statement.Term {
+            var policy_options_policy_statement_term_model Policy_options_Policy_statement_Term_Model
+            policy_options_policy_statement_term_model.Name = types.StringPointerValue(v_policy_options_policy_statement_term.Name)
+                
+        policy_options_policy_statement_term_from_List := make([]Policy_options_Policy_statement_Term_From_Model, len(v_policy_options_policy_statement_term.From))
+        for i_policy_options_policy_statement_term_from, v_policy_options_policy_statement_term_from := range v_policy_options_policy_statement_term.From {
+            var policy_options_policy_statement_term_from_model Policy_options_Policy_statement_Term_From_Model
+            policy_options_policy_statement_term_from_List[i_policy_options_policy_statement_term_from] = policy_options_policy_statement_term_from_model
+        }
+        policy_options_policy_statement_term_model.From, _ = types.ListValueFrom(ctx, types.ObjectType{AttrTypes: Policy_options_Policy_statement_Term_From_Model{}.AttrTypes()}, policy_options_policy_statement_term_from_List)
+        policy_options_policy_statement_term_List[i_policy_options_policy_statement_term] = policy_options_policy_statement_term_model
+                
+        policy_options_policy_statement_term_then_List := make([]Policy_options_Policy_statement_Term_Then_Model, len(v_policy_options_policy_statement_term.Then))
+        for i_policy_options_policy_statement_term_then, v_policy_options_policy_statement_term_then := range v_policy_options_policy_statement_term.Then {
+            var policy_options_policy_statement_term_then_model Policy_options_Policy_statement_Term_Then_Model
+                
+        policy_options_policy_statement_term_then_community_List := make([]Policy_options_Policy_statement_Term_Then_Community_Model, len(v_policy_options_policy_statement_term_then.Community))
+        for i_policy_options_policy_statement_term_then_community, v_policy_options_policy_statement_term_then_community := range v_policy_options_policy_statement_term_then.Community {
+            var policy_options_policy_statement_term_then_community_model Policy_options_Policy_statement_Term_Then_Community_Model
+            policy_options_policy_statement_term_then_community_model.Community_name = types.StringPointerValue(v_policy_options_policy_statement_term_then_community.Community_name)
+            policy_options_policy_statement_term_then_community_List[i_policy_options_policy_statement_term_then_community] = policy_options_policy_statement_term_then_community_model
+        }
+        policy_options_policy_statement_term_then_model.Community, _ = types.ListValueFrom(ctx, types.ObjectType{AttrTypes: Policy_options_Policy_statement_Term_Then_Community_Model{}.AttrTypes()}, policy_options_policy_statement_term_then_community_List)
+        policy_options_policy_statement_term_then_List[i_policy_options_policy_statement_term_then] = policy_options_policy_statement_term_then_model
+            policy_options_policy_statement_term_then_model.Accept = types.BoolValue(v_policy_options_policy_statement_term_then.Accept != nil)
+        }
+        policy_options_policy_statement_term_model.Then, _ = types.ListValueFrom(ctx, types.ObjectType{AttrTypes: Policy_options_Policy_statement_Term_Then_Model{}.AttrTypes()}, policy_options_policy_statement_term_then_List)
+        policy_options_policy_statement_term_List[i_policy_options_policy_statement_term] = policy_options_policy_statement_term_model
+        }
+        policy_options_policy_statement_model.Term, _ = types.ListValueFrom(ctx, types.ObjectType{AttrTypes: Policy_options_Policy_statement_Term_Model{}.AttrTypes()}, policy_options_policy_statement_term_List)
+        policy_options_policy_statement_List[i_policy_options_policy_statement] = policy_options_policy_statement_model
+                
+        policy_options_policy_statement_then_List := make([]Policy_options_Policy_statement_Then_Model, len(v_policy_options_policy_statement.Then))
+        for i_policy_options_policy_statement_then, v_policy_options_policy_statement_then := range v_policy_options_policy_statement.Then {
+            var policy_options_policy_statement_then_model Policy_options_Policy_statement_Then_Model
+            policy_options_policy_statement_then_List[i_policy_options_policy_statement_then] = policy_options_policy_statement_then_model
+                
+        policy_options_policy_statement_then_load_balance_List := make([]Policy_options_Policy_statement_Then_Load_balance_Model, len(v_policy_options_policy_statement_then.Load_balance))
+        for i_policy_options_policy_statement_then_load_balance, v_policy_options_policy_statement_then_load_balance := range v_policy_options_policy_statement_then.Load_balance {
+            var policy_options_policy_statement_then_load_balance_model Policy_options_Policy_statement_Then_Load_balance_Model
+            policy_options_policy_statement_then_load_balance_model.Per_packet = types.BoolValue(v_policy_options_policy_statement_then_load_balance.Per_packet != nil)
+            policy_options_policy_statement_then_load_balance_List[i_policy_options_policy_statement_then_load_balance] = policy_options_policy_statement_then_load_balance_model
+        }
+        policy_options_policy_statement_then_model.Load_balance, _ = types.ListValueFrom(ctx, types.ObjectType{AttrTypes: Policy_options_Policy_statement_Then_Load_balance_Model{}.AttrTypes()}, policy_options_policy_statement_then_load_balance_List)
+        policy_options_policy_statement_then_List[i_policy_options_policy_statement_then] = policy_options_policy_statement_then_model
+        }
+        policy_options_policy_statement_model.Then, _ = types.ListValueFrom(ctx, types.ObjectType{AttrTypes: Policy_options_Policy_statement_Then_Model{}.AttrTypes()}, policy_options_policy_statement_then_List)
+        policy_options_policy_statement_List[i_policy_options_policy_statement] = policy_options_policy_statement_model
+        }
+        policy_options_model.Policy_statement, _ = types.ListValueFrom(ctx, types.ObjectType{AttrTypes: Policy_options_Policy_statement_Model{}.AttrTypes()}, policy_options_policy_statement_List)
+        policy_options_List[i_policy_options] = policy_options_model
+        policy_options_community_List := make([]Policy_options_Community_Model, len(v_policy_options.Community))
+        for i_policy_options_community, v_policy_options_community := range v_policy_options.Community {
+            var policy_options_community_model Policy_options_Community_Model
+            policy_options_community_model.Name = types.StringPointerValue(v_policy_options_community.Name)
+            policy_options_community_model.Members = types.StringPointerValue(v_policy_options_community.Members)
+        }
+        policy_options_model.Community, _ = types.ListValueFrom(ctx, types.ObjectType{AttrTypes: Policy_options_Community_Model{}.AttrTypes()}, policy_options_community_List)
+        policy_options_List[i_policy_options] = policy_options_model
+    }
+    state.Policy_options, _ = types.ListValueFrom(ctx, types.ObjectType{AttrTypes: Policy_options_Model{}.AttrTypes()}, policy_options_List)
+	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...) 
 }
+
+
+
+
 
 // Update implements resource.Resource.
 func (r *resource_Apply_Groups) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-
+	
 	var plan Groups_Model
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
 	// Check for errors
@@ -531,88 +536,99 @@ func (r *resource_Apply_Groups) Update(ctx context.Context, req resource.UpdateR
 	}
 	var config xml_Configuration
 	config.Groups.Name = plan.ResourceName.ValueStringPointer()
-
-	var var_interfaces []Interfaces_Model
-	if plan.Interfaces.IsNull() {
-		var_interfaces = []Interfaces_Model{}
-	} else {
-		resp.Diagnostics.Append(plan.Interfaces.ElementsAs(ctx, &var_interfaces, false)...)
-		if resp.Diagnostics.HasError() {
-			return
-		}
-	}
-	config.Groups.Interfaces = make([]xml_Interfaces, len(var_interfaces))
-	for i_interfaces, v_interfaces := range var_interfaces {
-		var var_interfaces_interface []Interfaces_Interface_Model
-		resp.Diagnostics.Append(v_interfaces.Interface.ElementsAs(ctx, &var_interfaces_interface, false)...)
-		if resp.Diagnostics.HasError() {
-			return
-		}
-		config.Groups.Interfaces[i_interfaces].Interface = make([]xml_Interfaces_Interface, len(var_interfaces_interface))
-		for i_interfaces_interface, v_interfaces_interface := range var_interfaces_interface {
-			config.Groups.Interfaces[i_interfaces].Interface[i_interfaces_interface].Name = v_interfaces_interface.Name.ValueStringPointer()
-			config.Groups.Interfaces[i_interfaces].Interface[i_interfaces_interface].Description = v_interfaces_interface.Description.ValueStringPointer()
-			if v_interfaces_interface.Vlan_tagging.ValueBool() {
-				empty := ""
-				config.Groups.Interfaces[i_interfaces].Interface[i_interfaces_interface].Vlan_tagging = &empty
-			}
-			config.Groups.Interfaces[i_interfaces].Interface[i_interfaces_interface].Mtu = v_interfaces_interface.Mtu.ValueInt64Pointer()
-			var var_interfaces_interface_unit []Interfaces_Interface_Unit_Model
-			resp.Diagnostics.Append(v_interfaces_interface.Unit.ElementsAs(ctx, &var_interfaces_interface_unit, false)...)
-			if resp.Diagnostics.HasError() {
-				return
-			}
-			config.Groups.Interfaces[i_interfaces].Interface[i_interfaces_interface].Unit = make([]xml_Interfaces_Interface_Unit, len(var_interfaces_interface_unit))
-			for i_interfaces_interface_unit, v_interfaces_interface_unit := range var_interfaces_interface_unit {
-				config.Groups.Interfaces[i_interfaces].Interface[i_interfaces_interface].Unit[i_interfaces_interface_unit].Name = v_interfaces_interface_unit.Name.ValueStringPointer()
-				config.Groups.Interfaces[i_interfaces].Interface[i_interfaces_interface].Unit[i_interfaces_interface_unit].Description = v_interfaces_interface_unit.Description.ValueStringPointer()
-				config.Groups.Interfaces[i_interfaces].Interface[i_interfaces_interface].Unit[i_interfaces_interface_unit].Vlan_id = v_interfaces_interface_unit.Vlan_id.ValueStringPointer()
-				var var_interfaces_interface_unit_family []Interfaces_Interface_Unit_Family_Model
-				resp.Diagnostics.Append(v_interfaces_interface_unit.Family.ElementsAs(ctx, &var_interfaces_interface_unit_family, false)...)
-				if resp.Diagnostics.HasError() {
-					return
-				}
-				config.Groups.Interfaces[i_interfaces].Interface[i_interfaces_interface].Unit[i_interfaces_interface_unit].Family = make([]xml_Interfaces_Interface_Unit_Family, len(var_interfaces_interface_unit_family))
-				for i_interfaces_interface_unit_family, v_interfaces_interface_unit_family := range var_interfaces_interface_unit_family {
-					var var_interfaces_interface_unit_family_inet []Interfaces_Interface_Unit_Family_Inet_Model
-					resp.Diagnostics.Append(v_interfaces_interface_unit_family.Inet.ElementsAs(ctx, &var_interfaces_interface_unit_family_inet, false)...)
-					if resp.Diagnostics.HasError() {
-						return
-					}
-					config.Groups.Interfaces[i_interfaces].Interface[i_interfaces_interface].Unit[i_interfaces_interface_unit].Family[i_interfaces_interface_unit_family].Inet = make([]xml_Interfaces_Interface_Unit_Family_Inet, len(var_interfaces_interface_unit_family_inet))
-					for i_interfaces_interface_unit_family_inet, v_interfaces_interface_unit_family_inet := range var_interfaces_interface_unit_family_inet {
-						var var_interfaces_interface_unit_family_inet_address []Interfaces_Interface_Unit_Family_Inet_Address_Model
-						resp.Diagnostics.Append(v_interfaces_interface_unit_family_inet.Address.ElementsAs(ctx, &var_interfaces_interface_unit_family_inet_address, false)...)
-						if resp.Diagnostics.HasError() {
-							return
-						}
-						config.Groups.Interfaces[i_interfaces].Interface[i_interfaces_interface].Unit[i_interfaces_interface_unit].Family[i_interfaces_interface_unit_family].Inet[i_interfaces_interface_unit_family_inet].Address = make([]xml_Interfaces_Interface_Unit_Family_Inet_Address, len(var_interfaces_interface_unit_family_inet_address))
-						for i_interfaces_interface_unit_family_inet_address, v_interfaces_interface_unit_family_inet_address := range var_interfaces_interface_unit_family_inet_address {
-							config.Groups.Interfaces[i_interfaces].Interface[i_interfaces_interface].Unit[i_interfaces_interface_unit].Family[i_interfaces_interface_unit_family].Inet[i_interfaces_interface_unit_family_inet].Address[i_interfaces_interface_unit_family_inet_address].Name = v_interfaces_interface_unit_family_inet_address.Name.ValueStringPointer()
-						}
-					}
-					var var_interfaces_interface_unit_family_inet6 []Interfaces_Interface_Unit_Family_Inet6_Model
-					resp.Diagnostics.Append(v_interfaces_interface_unit_family.Inet6.ElementsAs(ctx, &var_interfaces_interface_unit_family_inet6, false)...)
-					if resp.Diagnostics.HasError() {
-						return
-					}
-					config.Groups.Interfaces[i_interfaces].Interface[i_interfaces_interface].Unit[i_interfaces_interface_unit].Family[i_interfaces_interface_unit_family].Inet6 = make([]xml_Interfaces_Interface_Unit_Family_Inet6, len(var_interfaces_interface_unit_family_inet6))
-					for i_interfaces_interface_unit_family_inet6, v_interfaces_interface_unit_family_inet6 := range var_interfaces_interface_unit_family_inet6 {
-						var var_interfaces_interface_unit_family_inet6_address []Interfaces_Interface_Unit_Family_Inet6_Address_Model
-						resp.Diagnostics.Append(v_interfaces_interface_unit_family_inet6.Address.ElementsAs(ctx, &var_interfaces_interface_unit_family_inet6_address, false)...)
-						if resp.Diagnostics.HasError() {
-							return
-						}
-						config.Groups.Interfaces[i_interfaces].Interface[i_interfaces_interface].Unit[i_interfaces_interface_unit].Family[i_interfaces_interface_unit_family].Inet6[i_interfaces_interface_unit_family_inet6].Address = make([]xml_Interfaces_Interface_Unit_Family_Inet6_Address, len(var_interfaces_interface_unit_family_inet6_address))
-						for i_interfaces_interface_unit_family_inet6_address, v_interfaces_interface_unit_family_inet6_address := range var_interfaces_interface_unit_family_inet6_address {
-							config.Groups.Interfaces[i_interfaces].Interface[i_interfaces_interface].Unit[i_interfaces_interface_unit].Family[i_interfaces_interface_unit_family].Inet6[i_interfaces_interface_unit_family_inet6].Address[i_interfaces_interface_unit_family_inet6_address].Name = v_interfaces_interface_unit_family_inet6_address.Name.ValueStringPointer()
-						}
-					}
-				}
-			}
-		}
-	}
-
+    
+	
+    var var_policy_options []Policy_options_Model
+    if plan.Policy_options.IsNull() {
+        var_policy_options = []Policy_options_Model{}
+    }else {
+        resp.Diagnostics.Append(plan.Policy_options.ElementsAs(ctx, &var_policy_options, false)...)
+        if resp.Diagnostics.HasError() {
+            return
+        }
+    }
+    config.Groups.Policy_options = make([]xml_Policy_options, len(var_policy_options))
+    for i_policy_options, v_policy_options := range var_policy_options {
+        var var_policy_options_policy_statement []Policy_options_Policy_statement_Model
+        resp.Diagnostics.Append(v_policy-options.Policy_statement.ElementsAs(ctx, &var_policy_options_policy_statement, false)...)
+        if resp.Diagnostics.HasError() {
+            return
+        }
+	    config.Groups.Policy_options[i_policy_options].Policy_statement = make([]xml_Policy_options_Policy_statement, len(var_policy_options_policy_statement))
+        for i_policy_options_policy_statement, v_policy_options_policy_statement := range var_policy_options_policy_statement {
+            config.Groups.Policy_options[i_policy_options].Policy_statement[i_policy_options_policy_statement].Name = v_policy_options_policy_statement.Name.ValueStringPointer()
+            var var_policy_options_policy_statement_term []Policy_options_Policy_statement_Term_Model
+            resp.Diagnostics.Append(v_policy_options_policy_statement.Term.ElementsAs(ctx, &var_policy_options_policy_statement_term, false)...)
+            if resp.Diagnostics.HasError() {
+                return
+            }
+	    config.Groups.Policy_options[i_policy_options].Policy_statement[i_policy_options_policy_statement].Term = make([]xml_Policy_options_Policy_statement_Term, len(var_policy_options_policy_statement_term))
+        for i_policy_options_policy_statement_term, v_policy_options_policy_statement_term := range var_policy_options_policy_statement_term {
+            config.Groups.Policy_options[i_policy_options].Policy_statement[i_policy_options_policy_statement].Term[i_policy_options_policy_statement_term].Name = v_policy_options_policy_statement_term.Name.ValueStringPointer()
+            var var_policy_options_policy_statement_term_from []Policy_options_Policy_statement_Term_From_Model
+            resp.Diagnostics.Append(v_policy_options_policy_statement_term.From.ElementsAs(ctx, &var_policy_options_policy_statement_term_from, false)...)
+            if resp.Diagnostics.HasError() {
+                return
+            }
+	    config.Groups.Policy_options[i_policy_options].Policy_statement[i_policy_options_policy_statement].Term[i_policy_options_policy_statement_term].From = make([]xml_Policy_options_Policy_statement_Term_From, len(var_policy_options_policy_statement_term_from))
+        for i_policy_options_policy_statement_term_from, v_policy_options_policy_statement_term_from := range var_policy_options_policy_statement_term_from {
+        }
+            var var_policy_options_policy_statement_term_then []Policy_options_Policy_statement_Term_Then_Model
+            resp.Diagnostics.Append(v_policy_options_policy_statement_term.Then.ElementsAs(ctx, &var_policy_options_policy_statement_term_then, false)...)
+            if resp.Diagnostics.HasError() {
+                return
+            }
+	    config.Groups.Policy_options[i_policy_options].Policy_statement[i_policy_options_policy_statement].Term[i_policy_options_policy_statement_term].Then = make([]xml_Policy_options_Policy_statement_Term_Then, len(var_policy_options_policy_statement_term_then))
+        for i_policy_options_policy_statement_term_then, v_policy_options_policy_statement_term_then := range var_policy_options_policy_statement_term_then {
+            var var_policy_options_policy_statement_term_then_community []Policy_options_Policy_statement_Term_Then_Community_Model
+            resp.Diagnostics.Append(v_policy_options_policy_statement_term_then.Community.ElementsAs(ctx, &var_policy_options_policy_statement_term_then_community, false)...)
+            if resp.Diagnostics.HasError() {
+                return
+            }
+	    config.Groups.Policy_options[i_policy_options].Policy_statement[i_policy_options_policy_statement].Term[i_policy_options_policy_statement_term].Then[i_policy_options_policy_statement_term_then].Community = make([]xml_Policy_options_Policy_statement_Term_Then_Community, len(var_policy_options_policy_statement_term_then_community))
+        for i_policy_options_policy_statement_term_then_community, v_policy_options_policy_statement_term_then_community := range var_policy_options_policy_statement_term_then_community {
+            config.Groups.Policy_options[i_policy_options].Policy_statement[i_policy_options_policy_statement].Term[i_policy_options_policy_statement_term].Then[i_policy_options_policy_statement_term_then].Community[i_policy_options_policy_statement_term_then_community].Community_name = v_policy_options_policy_statement_term_then_community.Community_name.ValueStringPointer()
+        }
+            if v_policy_options_policy_statement_term_then.Accept.ValueBool() {
+                empty := ""
+                config.Groups.Policy_options[i_policy_options].Policy_statement[i_policy_options_policy_statement].Term[i_policy_options_policy_statement_term].Then[i_policy_options_policy_statement_term_then].Accept = &empty
+            }
+        }
+        }
+            var var_policy_options_policy_statement_then []Policy_options_Policy_statement_Then_Model
+            resp.Diagnostics.Append(v_policy_options_policy_statement.Then.ElementsAs(ctx, &var_policy_options_policy_statement_then, false)...)
+            if resp.Diagnostics.HasError() {
+                return
+            }
+	    config.Groups.Policy_options[i_policy_options].Policy_statement[i_policy_options_policy_statement].Then = make([]xml_Policy_options_Policy_statement_Then, len(var_policy_options_policy_statement_then))
+        for i_policy_options_policy_statement_then, v_policy_options_policy_statement_then := range var_policy_options_policy_statement_then {
+            var var_policy_options_policy_statement_then_load_balance []Policy_options_Policy_statement_Then_Load_balance_Model
+            resp.Diagnostics.Append(v_policy_options_policy_statement_then.Load_balance.ElementsAs(ctx, &var_policy_options_policy_statement_then_load_balance, false)...)
+            if resp.Diagnostics.HasError() {
+                return
+            }
+	    config.Groups.Policy_options[i_policy_options].Policy_statement[i_policy_options_policy_statement].Then[i_policy_options_policy_statement_then].Load_balance = make([]xml_Policy_options_Policy_statement_Then_Load_balance, len(var_policy_options_policy_statement_then_load_balance))
+        for i_policy_options_policy_statement_then_load_balance, v_policy_options_policy_statement_then_load_balance := range var_policy_options_policy_statement_then_load_balance {
+            if v_policy_options_policy_statement_then_load_balance.Per_packet.ValueBool() {
+                empty := ""
+                config.Groups.Policy_options[i_policy_options].Policy_statement[i_policy_options_policy_statement].Then[i_policy_options_policy_statement_then].Load_balance[i_policy_options_policy_statement_then_load_balance].Per_packet = &empty
+            }
+        }
+        }
+        }
+    for i_policy_options, v_policy_options := range var_policy_options {
+        var var_policy_options_community []Policy_options_Community_Model
+        resp.Diagnostics.Append(v_policy-options.Community.ElementsAs(ctx, &var_policy_options_community, false)...)
+        if resp.Diagnostics.HasError() {
+            return
+        }
+	    config.Groups.Policy_options[i_policy_options].Community = make([]xml_Policy_options_Community, len(var_policy_options_community))
+        for i_policy_options_community, v_policy_options_community := range var_policy_options_community {
+            config.Groups.Policy_options[i_policy_options].Community[i_policy_options_community].Name = v_policy_options_community.Name.ValueStringPointer()
+            config.Groups.Policy_options[i_policy_options].Community[i_policy_options_community].Members = v_policy_options_community.Members.ValueStringPointer()
+        }
+    }
+	
 	err := r.client.SendTransaction(plan.ResourceName.ValueString(), config, false)
 	if err != nil {
 		resp.Diagnostics.AddError("Failed while Sending", err.Error())
@@ -625,6 +641,8 @@ func (r *resource_Apply_Groups) Update(ctx context.Context, req resource.UpdateR
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
+
+
 
 // Delete implements resource.Resource.
 func (r *resource_Apply_Groups) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
@@ -643,4 +661,11 @@ func (r *resource_Apply_Groups) Delete(ctx context.Context, req resource.DeleteR
 		resp.Diagnostics.AddError("Failed while deleting configuration", err.Error())
 		return
 	}
+    commit_err := r.client.SendCommit()
+	if commit_err != nil {
+		resp.Diagnostics.AddError("Failed while committing apply-group", commit_err.Error())
+		return
+	}
+	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
+
