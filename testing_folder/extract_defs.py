@@ -129,7 +129,7 @@ def main():
     args = parser.parse_args()
     resources = filter_json_using_xml(args.json_schema, args.xml_config)
     # print(json.dumps(resources, indent=2))
-    with open('go_template.j2') as jinja_tmpl:
+    with open('go_template_2.j2') as jinja_tmpl:
         tmpl = Template(jinja_tmpl.read())
     print(tmpl.render(data=resources))
     
