@@ -369,8 +369,9 @@ func (r *resource_Apply_Groups) Create(ctx context.Context, req resource.CreateR
         }
     }
     config.Groups.{{parent.name|capitalize|replace("-", "_")}} = make([]xml_{{parent.name|capitalize|replace("-", "_")}}, len(var_{{parent.name|replace("-", "_")}}))
-    {%- for kid in parent['kids']%}
+   
     for i_{{parent.name|replace("-", "_")}}, v_{{parent.name|replace("-", "_")}} := range var_{{parent.name|replace("-", "_")}} {
+         {%- for kid in parent['kids']%}
         var var_{{parent.name|replace("-", "_")}}_{{kid.name|replace("-", "_")}} []{{get_full_parent_name(kid, "_", 'True')}}_{{kid.name|capitalize|replace("-", "_")}}_Model
         resp.Diagnostics.Append(v_{{parent.name|replace("-", "_")}}.{{kid.name|capitalize|replace("-", "_")}}.ElementsAs(ctx, &var_{{parent.name|replace("-", "_")}}_{{kid.name|replace("-", "_")}}, false)...)
         if resp.Diagnostics.HasError() {
@@ -409,9 +410,9 @@ func (r *resource_Apply_Groups) Create(ctx context.Context, req resource.CreateR
             {%- if kid['leaf-type'] == 'empty'%}
             {{get_full_parent_name(ele, "_")}}_{{ele.name|replace("-", "_")}}_model.{{kid.name|capitalize|replace("-", "_")}} = types.BoolValue(v_{{get_full_parent_name(ele, "_")}}_{{ele.name|replace("-", "_")}}.{{kid.name|capitalize|replace("-", "_")}} != nil)
             {%- endif %}
-            {%- if ele['kids'] | length == 1 %}
+            {# {%- if ele['kids'] | length == 1 %} #}
             {{get_full_parent_name(ele,"_")}}_{{ele.name|replace("-", "_")}}_List[i_{{get_full_parent_name(ele, "_")}}_{{ele.name|replace("-", "_")}}] = {{get_full_parent_name(ele, "_")}}_{{ele.name|replace("-", "_")}}_model
-            {%- endif %}
+            {# {%- endif %} #}
             {%- if kid['type'] == 'list' or kid['type'] == 'container'%}
                 {{read_method_macro(kid)}}
             {%- endif %}
@@ -478,8 +479,9 @@ func (r *resource_Apply_Groups) Update(ctx context.Context, req resource.UpdateR
         }
     }
     config.Groups.{{parent.name|capitalize|replace("-", "_")}} = make([]xml_{{parent.name|capitalize|replace("-", "_")}}, len(var_{{parent.name|replace("-", "_")}}))
-    {%- for kid in parent['kids']%}
+    
     for i_{{parent.name|replace("-", "_")}}, v_{{parent.name|replace("-", "_")}} := range var_{{parent.name|replace("-", "_")}} {
+        {%- for kid in parent['kids']%}
         var var_{{parent.name|replace("-", "_")}}_{{kid.name|replace("-", "_")}} []{{get_full_parent_name(kid, "_", 'True')}}_{{kid.name|capitalize|replace("-", "_")}}_Model
         resp.Diagnostics.Append(v_{{parent.name|replace("-", "_")}}.{{kid.name|capitalize|replace("-", "_")}}.ElementsAs(ctx, &var_{{parent.name|replace("-", "_")}}_{{kid.name|replace("-", "_")}}, false)...)
         if resp.Diagnostics.HasError() {
