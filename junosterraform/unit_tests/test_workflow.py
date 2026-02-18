@@ -79,15 +79,22 @@ def test_yang2go():
     ]
 
     print("CMD:", cmd)
-    proc = subprocess.run(
-        cmd,
-        input=stdin_json,
-        text=True,
-        capture_output=True,
-        check=True,
-        cwd=repo_root,
-        env=env
-    )
+    try:
+        proc = subprocess.run(
+            cmd,
+            input=stdin_json,
+            text=True,
+            capture_output=True,
+            check=True,
+            cwd=repo_root,
+            env=env
+        )
+    except CalledProcessError as e:
+        # Debug output
+        print("RETURNCODE:", e.retcode)
+        print("STDOUT:\n", e.output)
+        print("STDERR:\n", e.stderr)
+        raise(e)
 
     # Debug output
     print("RETURNCODE:", proc.returncode)
