@@ -15,7 +15,7 @@ class TestWorkflow(unittest.TestCase):
 
 def test_yang2go():
     repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-    yang_root = os.path.abspath(os.path.join(repo_root, "..", "yang"))
+    yang_root = os.path.abspath(os.path.join(repo_root, "examples", "yang"))
 
     print("repo_root:", repo_root)
     print("yang_root:", yang_root)
