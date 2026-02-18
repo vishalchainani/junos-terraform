@@ -127,7 +127,7 @@ class FNodeTree:
 #
 # Prefix used in jtaf.yang module
 #
-fh_prefix = 'jtaf'
+jtaf_prefix = 'jtaf'
 
 jt = FNodeTree()
 
@@ -170,11 +170,11 @@ def pyang_plugin_init():
 
 class FoghornPlugin(plugin.PyangPlugin):
     def __init__(self):
-        plugin.PyangPlugin.__init__(self, fh_prefix)
+        plugin.PyangPlugin.__init__(self, jtaf_prefix)
         
     def add_output_format(self, fmts):
         self.multiple_modules = True
-        fmts[fh_prefix] = self
+        fmts[jtaf_prefix] = self
 
     def add_opts(self, optparser):
         optlist = [
@@ -237,7 +237,7 @@ def jtaf_emit_tree(ctx, fd, modules):
     fd.write(json.dumps(jt, indent = 2, default=serialize))
     
 def jtaf_get_keyvalue(stmt, kw):
-    v = stmt.search((fh_prefix, kw))
+    v = stmt.search((jtaf_prefix, kw))
     if len(v) == 1:
         return v[0].arg
     elif len(v) == 0:
@@ -249,7 +249,7 @@ def jtaf_get_keyvalue(stmt, kw):
         return a
 
 def jtaf_walk_dts(node, ch):
-    if ch.keyword[0] != fh_prefix:
+    if ch.keyword[0] != jtaf_prefix:
         return
     node["dts_" + ch.keyword[1]] = ch.arg
     
@@ -319,9 +319,9 @@ def jtaf_walk_child(ctx, ch):
         jt.add_typedef(ch)
         return
     
-    if type(ch.keyword) is tuple:
-        jtaf_walk_dts(fh_cur_node, ch)
-        return
+    #if type(ch.keyword) is tuple:
+    #    jtaf_walk_dts(jtaf_cur_node, ch)
+    #    return
 
     if ch.keyword in yang_type:
         jt.push(ch.arg)
