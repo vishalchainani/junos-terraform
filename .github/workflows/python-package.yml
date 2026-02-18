@@ -25,7 +25,7 @@ jobs:
       with:
         python-version: ${{ matrix.python-version }}
     - name: Checkout JUNOS yang files
-      uses: juniper/yang
+      uses: Juniper/yang@master
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
