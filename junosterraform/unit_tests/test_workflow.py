@@ -5,6 +5,7 @@ import subprocess
 import shutil
 import sys
 import unittest
+from subprocess import CalledProcessError
 
 class TestWorkflow(unittest.TestCase):
 
