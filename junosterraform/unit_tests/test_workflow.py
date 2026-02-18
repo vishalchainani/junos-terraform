@@ -22,9 +22,6 @@ def test_yang2go():
     print("yang_root:", yang_root)
     assert os.path.isdir(yang_root), f"YANG root does not exist: {yang_root}"
 
-    
-    sys.path.insert(0, f"{repo_root}/junosterraform")
-    #exe = f"{repo_root}/junosterraform/jtaf-yang2go"
     exe = shutil.which("jtaf-yang2go")
     assert exe, "Could not find jtaf-yang2go on PATH"
 
