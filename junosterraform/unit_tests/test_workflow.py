@@ -92,7 +92,7 @@ def test_yang2go():
         )
     except CalledProcessError as e:
         # Debug output
-        print("RETURNCODE:", e.retcode)
+        print("RETURNCODE:", e.returncode)
         print("STDOUT:\n", e.output)
         print("STDERR:\n", e.stderr)
         raise(e)
