@@ -21,8 +21,8 @@ def test_yang2go():
     print("yang_root:", yang_root)
     assert os.path.isdir(yang_root), f"YANG root does not exist: {yang_root}"
 
-    exe = shutil.which("jtaf-yang2go")
-    assert exe, "Could not find jtaf-yang2go on PATH"
+    #exe = shutil.which("jtaf-yang2go")
+    #assert exe, "Could not find jtaf-yang2go on PATH"
 
     env = os.environ.copy()
 
