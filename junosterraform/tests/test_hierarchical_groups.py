@@ -283,7 +283,7 @@ def test_xml2yaml_main_supports_external_playbook_paths(xml2yaml_mod, tmp_path, 
     assert (host_vars_dir / "leaf1.yaml").exists()
 
 
-def test_all_yaml_first_writer_wins_and_conflicts_go_to_device_type(xml2yaml_mod, tmp_path, monkeypatch):
+def test_all_yaml_first_writer_wins_and_conflicts_stay_in_host_vars(xml2yaml_mod, tmp_path, monkeypatch):
     schema = {
         "root": {
             "name": "root",
@@ -347,10 +347,13 @@ def test_all_yaml_first_writer_wins_and_conflicts_go_to_device_type(xml2yaml_mod
     assert all_payload_run2["system"]["domain_name"] == "alpha.local"
     assert all_payload_run2["routing_options"]["router_id"] == "1.1.1.1"
 
-    # Conflicting top-level keys are redirected to type override file.
-    type_override = yaml.safe_load((group_vars_dir / "qfx" / "all.yml").read_text())
-    assert type_override["system"]["domain_name"] == "beta.local"
-    assert type_override["routing_options"]["router_id"] == "2.2.2.2"
+    # No type-specific group_vars file should be created.
+    assert not (group_vars_dir / "qfx" / "all.yml").exists()
+
+    # Conflicting values remain host-specific in host_vars.
+    host_b = yaml.safe_load((out_dir / "host_vars" / "b.yaml").read_text())
+    assert host_b["system"]["domain_name"] == "beta.local"
+    assert host_b["routing_options"]["router_id"] == "2.2.2.2"
 
 
 def test_jtaf_ansible_main_generates_role(ansible_mod, tmp_path, monkeypatch):

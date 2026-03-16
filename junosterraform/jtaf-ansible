@@ -90,8 +90,8 @@ def main() -> None:
 
     # write a merge-aware tasks/main.yml
     tasks_main = """---
-# Hierarchical variable merging with automatic device type detection.
-# Merge order: global (all) -> device_type -> host
+# Hierarchical variable merging.
+# Merge order: group_vars/all.yml -> host_vars/<host>.yml
 # with optional _merge_directive meta-instructions for custom behavior.
 
 # Build the effective config from Ansible-resolved vars.
@@ -125,7 +125,7 @@ def main() -> None:
 
     # write group_vars/all.yml — common defaults shared by all hosts
     group_vars_all = """# Common configuration for all hosts managed by this JTAF Ansible role.
-# Values here are overridden by group_vars/device_<type>/all.yml, then host_vars/<host>.yml.
+# Values here are overridden by host_vars/<host>.yml.
 # No JTAF-specific wrapper containers are required.
 """
     with open(os.path.join(new_dir, "group_vars", "all.yml"), "w") as f:

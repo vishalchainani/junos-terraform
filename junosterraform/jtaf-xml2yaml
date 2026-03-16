@@ -359,45 +359,20 @@ def merge_all_first_writer_wins(
     group_vars_root: str,
     incoming_shared: dict[str, Any],
 ) -> dict[str, Any]:
-    """Merge top-level shared values into all.yml and return conflicting keys.
+    """Merge top-level shared values into all.yml and return merged result.
 
-    Existing keys in all.yml win. Conflicting incoming keys are returned so
-    caller can place them into device-specific override files.
+    Existing keys in all.yml win (first writer wins across repeated runs).
     """
     all_file = os.path.join(group_vars_root, "all.yml")
     existing_all = load_yaml_file(all_file)
     merged_all = copy.deepcopy(existing_all)
-    conflicts: dict[str, Any] = {}
 
     for key, value in incoming_shared.items():
         if key not in merged_all:
             merged_all[key] = copy.deepcopy(value)
-            continue
-        if merged_all[key] != value:
-            conflicts[key] = copy.deepcopy(value)
 
     write_yaml_file(all_file, merged_all)
-    return conflicts
-
-
-def merge_device_override(
-    group_vars_root: str,
-    device_type: str,
-    override_payload: dict[str, Any],
-) -> None:
-    """Merge conflicting top-level keys into group_vars/<device_type>/all.yml."""
-    if not override_payload:
-        return
-
-    override_file = os.path.join(group_vars_root, device_type, "all.yml")
-    existing_override = load_yaml_file(override_file)
-    merged_override = copy.deepcopy(existing_override)
-
-    # Device-specific conflicts should override previous values for this type.
-    for key, value in override_payload.items():
-        merged_override[key] = copy.deepcopy(value)
-
-    write_yaml_file(override_file, merged_override)
+    return merged_all
 
 
 def write_host_vars_flat(
@@ -579,16 +554,15 @@ def write_inventory(
 
 
 def main() -> None:
-    """Generate Ansible inventory and hierarchical host_vars YAML from XML configuration.
+    """Generate Ansible inventory, group_vars/all.yml, and host_vars YAML.
 
     Parses command-line arguments for trimmed JSON schema and XML config files,
     auto-detects device types from configuration, extracts shared configuration
     into group_vars, writes per-host deltas to host_vars, and generates inventory.
 
     Output directory structure:
-        hosts – Ansible inventory with [all] and [device_<type>] groups
+        hosts – Ansible inventory with [all] and optional derived groups
         group_vars/all.yml – Shared configuration for all hosts
-        group_vars/<type>/all.yml – Device-type specific shared configuration
         host_vars/<hostname>.yaml – Per-host configuration deltas
     """
     parser = argparse.ArgumentParser(
@@ -654,8 +628,8 @@ def main() -> None:
     os.makedirs(group_vars_dir, exist_ok=True)
     host_entries = parse_host_entries(args.xml_config, schema)
 
-    # Generate hierarchical group_vars based on structural commonality.
-    print("Generating hierarchical group_vars with structural commonality detection...")
+    # Generate inventory groups and shared payloads.
+    print("Generating group_vars/all.yml + host_vars deltas...")
 
     resolved_role_type = args.type or infer_role_type_from_trimmed_json(args.trimmed_json)
 
@@ -669,29 +643,15 @@ def main() -> None:
         shared_payloads[group_name] = shared_payload
         print(f"  {group_name}: {len(group_payloads)} hosts, {len(shared_payload)} keys")
 
-    # Always merge top-level shared values into all.yml with first-writer-wins.
+    # Merge top-level shared values into all.yml with first-writer-wins.
     all_shared_payload = shared_payloads.get("all", {})
-    conflict_payload: dict[str, Any] = merge_all_first_writer_wins(
+    merged_all_payload: dict[str, Any] = merge_all_first_writer_wins(
         group_vars_dir,
         all_shared_payload,
     )
 
-    # Conflicts from all.yml are written under device type override for this run.
-    device_group_names = [
-        name for name in shared_payloads.keys() if name.startswith("device_type:")
-    ]
-    if device_group_names:
-        active_device_type = device_group_names[0].split(":", 1)[1]
-        merge_device_override(group_vars_dir, active_device_type, conflict_payload)
-
-    # Write any additional derived groups (non-all/non-device_type) as before.
-    for group_name, shared_payload in shared_payloads.items():
-        if group_name == "all" or group_name.startswith("device_type:"):
-            continue
-        write_group_vars_flat(group_vars_dir, group_name, shared_payload)
-
-    # Build the global shared payload for calculating host deltas.
-    global_shared_payload = all_shared_payload if all_shared_payload else {}
+    # Use merged all.yml as baseline for host-specific deltas.
+    global_shared_payload = merged_all_payload if merged_all_payload else {}
 
     hostnames = []
     for hostname, payload, _device_type in host_entries:

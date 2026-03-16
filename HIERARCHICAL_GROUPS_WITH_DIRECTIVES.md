@@ -1,17 +1,17 @@
 # Hierarchical Groups with Merge Directives
 
-This document describes the implementation of hierarchical YAML variable merging that eliminates JTAF-specific containers while supporting device-type groups and optional inline merge directives.
+This document describes the implementation of YAML variable merging that eliminates JTAF-specific containers while supporting optional inline merge directives.
 
 ## Overview
 
 This approach provides:
 
 1. **✅ No JTAF containers** - Variables are flat (no `jtaf_shared` or `jtaf_override` wrappers)
-2. **✅ Device-type hierarchy** - Variables organized by device type (QFX, SRX, MX, etc.)
+2. **✅ Simple variable layout** - Shared defaults in `group_vars/all.yml`, host deltas in `host_vars/*.yaml`
 3. **✅ Replace as default** - Scalar values replace by default; lists can be customized per-key
 4. **✅ Role-type driven grouping** - Device type comes from `-t/--type` or trimmed schema path inference
 5. **✅ Merge directives** - Optional `_merge_directive` meta-instructions for per-key control
-6. **✅ Clean separation** - Global defaults, device-type overrides, host-specific deltas
+6. **✅ Clean separation** - Global defaults plus host-specific deltas
 
 ## Quick Start
 
@@ -34,8 +34,6 @@ jtaf-xml2yaml \
 ansible-provider-junos-qfx/
 ├── group_vars/
 │   ├── all.yml                    # Global defaults (all hosts)
-│   └── qfx/
-│       └── all.yml               # QFX-specific defaults
 ├── host_vars/
 │   ├── dc1-spine1.yaml           # Spine1 device config (delta only)
 │   ├── dc1-spine2.yaml           # Spine2 device config (delta only)
@@ -55,8 +53,6 @@ Merge order in playbook (precedence from lowest to highest):
 ```
 group_vars/all.yml
         ↓
-group_vars/qfx/all.yml
-        ↓
 host_vars/dc1-spine1.yaml
         ↓
 jtaf_effective (final merged result)
@@ -68,8 +64,7 @@ The merge order (precedence from lowest to highest) is:
 
 ```
 1. group_vars/all.yml              (global defaults - all hosts)
-2. group_vars/<type>/all.yml       (e.g., qfx, srx)
-3. host_vars/<hostname>.yaml       (host-specific overrides - device delta)
+2. host_vars/<hostname>.yaml       (host-specific overrides - device delta)
 ```
 
 **Merge strategy:** Each level recursively combines with the previous level using Ansible's `combine()` filter with `recursive=True` and `list_merge='replace'` as the default. Merge directives can override per-key behavior.
@@ -104,37 +99,12 @@ syslog:
       port: 514
 ```
 
-### Example: group_vars/qfx/all.yml (Device Type Specific)
-
-QFX-specific defaults that override global values:
-
-```yaml
-# QFX (data center) specific overrides
-chassis:
-  redundancy:
-    enabled: true
-    mode: single-re
-
-system:
-  services:
-    netconf:
-      enabled: true
-      ssh_port: 830
-  time_zone: UTC
-
-# QFX-specific interfaces
-interfaces:
-  - name: et-0/0/16
-    mtu: 9192
-    speed: 400g
-```
-
 ### Example: host_vars/dc1-spine1.yaml (Host Specific)
 
 Host-specific configuration (device delta - only the differences):
 
 ```yaml
-# Only host-specific overrides from the device-type defaults
+# Only host-specific overrides from shared defaults
 system:
   host_name: dc1-spine1
 
@@ -213,9 +183,8 @@ interfaces:
 3. Fallback structural grouping if neither source is available
 
 Role type is used to:
-1. Write type-specific overrides under `group_vars/<type>/all.yml`
-2. Populate inventory group `[device_<type>]`
-3. Keep multi-run merge behavior deterministic across roles
+1. Populate inventory group `[device_<type>]`
+2. Keep multi-run merge behavior deterministic across roles
 
 ## Inventory Generation
 
@@ -255,36 +224,26 @@ Use in playbooks:
 
 The generated Ansible role automatically:
 
-1. **Detects device type** from host group membership
-2. **Merges variables** in hierarchy: global → device-type → host
-3. **Applies merge directives** via custom Ansible filter
-4. **Creates jtaf_effective** for use in templates
+1. **Merges variables** from `group_vars` + `host_vars` as resolved by Ansible
+2. **Applies merge directives** via custom Ansible filter
+3. **Creates jtaf_effective** for use in templates
 
 ```yaml
 ---
-# Hierarchical variable merging with automatic device type detection
-# Merge order: global (all) -> device_type -> host
+# Hierarchical variable merging
+# Merge order: group_vars/all.yml -> host_vars/<host>.yml
 
-# Detect device type group membership from inventory
-- name: Detect host device type group
-  set_fact:
-    host_device_type: >-
-      {{ group_names
-         | select('match', '^device_')
-         | map('regex_replace', '^device_', '')
-         | first | default('unknown') }}
-
-# Merge variables: device-type group vars first, then host-specific overrides
+# Build effective config from Ansible-resolved vars
 - name: Merge variables from hierarchy
   set_fact:
     jtaf_effective: >-
       {{
-        (vars.get(host_device_type, {}) | default({}))
-        | combine(
-            (hostvars[inventory_hostname] | default({})),
-            recursive=True,
-            list_merge='replace'
-          )
+        vars
+        | dict2items
+        | rejectattr('key', 'match', '^(ansible_.*|inventory_.*|role_.*)$')
+        | rejectattr('key', 'in', ['group_names', 'groups', 'group_vars', 'hostvars'])
+        | rejectattr('key', 'in', ['omit', 'playbook_dir', 'tmp_dir', 'jtaf_effective'])
+        | items2dict
       }}
   tags: [merge_vars]
 
@@ -433,7 +392,7 @@ ansible-playbook -i hosts jtaf-playbook.yml --check --diff
 
 1. **Check hierarchy** - Values from higher precedence (host_vars) override lower precedence (group_vars)
 2. **Check for typos** - YAML key names are case-sensitive
-3. **Verify variables loaded** - Check that host_vars/<hostname>.yaml and group_vars/<type>/all.yml exist
+3. **Verify variables loaded** - Check that host_vars/<hostname>.yaml and group_vars/all.yml exist
 
 ### Custom filter not found
 

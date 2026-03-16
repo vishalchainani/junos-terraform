@@ -234,27 +234,12 @@ def test_yang2ansible():
         derived_groups = re.findall(r"^\[([^\]]+)\]$", hosts_text, flags=re.MULTILINE)
         derived_groups = [group for group in derived_groups if group != "all"]
 
+        # Inventory can include derived groups, but vars are kept in group_vars/all.yml
+        # and host-specific values in host_vars/*.yaml only.
         for derived_group in derived_groups:
-            group_vars_dir = derived_group
-            is_device_group = derived_group.startswith("device_")
-            if derived_group.startswith("device_"):
-                group_vars_dir = derived_group.replace("device_", "", 1)
-
-            device_group_vars_file = os.path.join(
-                ansible_files_dir,
-                "group_vars",
-                group_vars_dir,
-                "all.yml",
-            )
-
-            if is_device_group:
-                # device_<type> inventory groups are always emitted, but
-                # group_vars/<type>/all.yml is only created when conflicting
-                # keys spill over from group_vars/all.yml.
-                continue
-
-            assert os.path.exists(device_group_vars_file), (
-                f"Expected derived group vars file not found: {device_group_vars_file}"
+            group_vars_subdir = os.path.join(ansible_files_dir, "group_vars", derived_group)
+            assert not os.path.exists(group_vars_subdir), (
+                f"Did not expect derived group vars directory: {group_vars_subdir}"
             )
 
         # Generated role should use hierarchy merge flow and merge directive filter.

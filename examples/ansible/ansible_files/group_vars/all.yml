@@ -1,0 +1,122 @@
+version: 18.1R3-S5.3
+snmp:
+  community:
+  - name: public
+    authorization: read-only
+  contact: aburston@juniper.net
+  location: JCL Labs
+routing_options:
+  static:
+    route:
+    - name: 0.0.0.0/0
+      next_hop: 100.123.0.1
+  forwarding_table:
+    export: PFE-LB
+    ecmp_fast_reroute: true
+system:
+  extensions:
+    providers:
+    - name: juniper
+      license_type:
+      - name: juniper
+        deployment_scope: commercial
+    - name: chef
+      license_type:
+      - name: juniper
+        deployment_scope: commercial
+  services:
+    extension_service:
+      request_response:
+        grpc:
+          max_connections: '30'
+          undocumented:
+            skip_authentication: null
+      notification:
+        allow_clients:
+          address: 0.0.0.0/0
+    rest:
+      http:
+        port: '3000'
+      enable_explorer: true
+    ssh:
+      root_login: allow
+    netconf:
+      ssh: ''
+  syslog:
+    file:
+    - name: messages
+      contents:
+      - name: any
+        notice: true
+      - name: authorization
+        info: true
+    - name: interactive-commands
+      contents:
+      - name: interactive-commands
+        any: true
+    user:
+    - name: '*'
+      contents:
+      - name: any
+        emergency: true
+  login:
+    user:
+    - name: jcluser
+      uid: '2000'
+      class: super-user
+      authentication:
+        encrypted_password: $1$a31gJmWG$h9ohikT1ajySf/tVH.gmv1
+    message: '***********************************************************************\nThis
+      system is restricted to __________, authorized users for legitimate\nbusiness
+      purposes only. All activity on the system will be logged and\nis subject to
+      monitoring. Unauthorized access, use or modification\nof computers, data therein
+      or data in transit to or from the computers\nis a violation of state and federal
+      laws. Unauthorized activity will\nbe reported to the law enforcement for investigation
+      and possible\nprosecution. __________ reserves the right to investigate, refer
+      for\nprosecution and pursue monetary damages in civil actions in the event\nof
+      unauthorized access.\n***********************************************************************\n'
+  root_authentication:
+    encrypted_password: $1$DbZ1Q3pj$s48cZytjsmSJRUJAf4LdM.
+interfaces: {}
+forwarding_options:
+  storm_control_profiles:
+  - name: default
+    all: ''
+policy_options: {}
+protocols:
+  igmp_snooping:
+    vlan:
+    - name: default
+  lldp:
+    interface:
+    - name: all
+  bgp: {}
+chassis:
+  aggregated_devices:
+    ethernet:
+      device_count: '24'
+security:
+  log:
+    report: ''
+    mode: stream
+  policies: {}
+  zones: {}
+  screen:
+    ids_option:
+    - name: untrust-screen
+      icmp:
+        ping_death: true
+      ip:
+        source_route_option: true
+        tear_drop: true
+      tcp:
+        syn_flood:
+          alarm_threshold: '1024'
+          attack_threshold: '200'
+          source_threshold: '1024'
+          destination_threshold: '2048'
+          undocumented:
+            queue_size: '2000'
+          timeout: '20'
+        land: true
+routing_instances: {}
