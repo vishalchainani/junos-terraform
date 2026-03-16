@@ -294,7 +294,7 @@ Notes:
 	ansible-playbook -i "localhost," jtaf-playbook.yml --check --diff
 
 Merge behavior for shared + host-specific vars:
-- Variables are organized as: shared global defaults in `group_vars/all.yml` and host-specific deltas in `host_vars/<host>.yaml`.
+- Variables are organized hierarchically: global defaults in `group_vars/all.yml` -> device-type shared values in `group_vars/device_<type>/all.yml` -> host-specific deltas in `host_vars/<host>.yaml`.
 - Generated role tasks merge variables from this hierarchy using Ansible's `combine()` filter with `recursive=True` and `list_merge='replace'`.
 - Optional `_merge_directive` meta-instructions in YAML allow per-key control over merge behavior (e.g., `_merge_directive: append` for lists).
 - See [HIERARCHICAL_GROUPS_WITH_DIRECTIVES.md](./HIERARCHICAL_GROUPS_WITH_DIRECTIVES.md) for detailed documentation.
@@ -310,13 +310,17 @@ Important behavior:
 - Device type for grouping comes from `-t/--type` (or inferred from `ansible-provider-junos-<type>/trimmed_schema.json` path), not from XML content.
 - Output can be split across directories so generated role location and provisioning playbook location can differ.
 - Repeated runs are merge-safe:
-  - `group_vars/all.yml` is merged with first-writer-wins at top-level keys.
+  - `group_vars/device_<type>/all.yml` is maintained per generated role type.
+  - `group_vars/all.yml` is rebuilt as the shared intersection across device-type group vars.
   - Host-specific differences are preserved in each `host_vars/<host>.yaml` file.
   - Existing inventory hosts/groups are merged (not clobbered).
 
 Usage:
 ```
 jtaf-xml2yaml -j <trimmed_schema.json> -x <config1.xml> [<config2.xml> ...] -d <output-dir> -t <device-type>
+
+# Optional: write device group vars as delta vs group_vars/all.yml
+jtaf-xml2yaml -j <trimmed_schema.json> -x <config1.xml> [<config2.xml> ...] -d <output-dir> -t <device-type> --device-group-delta
 
 # Write inventory/vars into a separate playbook workspace
 jtaf-xml2yaml -j <trimmed_schema.json> -x <config1.xml> [<config2.xml> ...] -d <role-output-dir> -t <device-type> \
@@ -335,7 +339,10 @@ jtaf-xml2yaml -j ansible-provider-junos-qfx/trimmed_schema.json \
 
 Output:
 - Creates `host_vars/<hostname>.yaml` for every XML file provided (hostname is file base name or `system/host-name` from XML).
-- Maintains `group_vars/all.yml` for global shared keys (first writer wins across runs).
+- Maintains `group_vars/device_<type>/all.yml` for per-type shared keys.
+- Maintains `group_vars/all.yml` for keys shared across all discovered device types.
+- Optional `--device-group-delta` writes `group_vars/device_<type>/all.yml` as a delta against `group_vars/all.yml`.
+- In delta mode, empty per-type delta files are omitted.
 - Writes/updates inventory hosts file with `[all]` and `[device_<type>]` groups.
 
 This output feeds into the Ansible role/playbook created by jtaf-ansible/jtaf-yang2ansible.
@@ -461,8 +468,9 @@ dc2-firewall2 ansible_host=192.0.2.204 ansible_port=830
 ```
 
 Notes on repeated runs:
-- If you run `jtaf-xml2yaml` again for another generated role, `group_vars/all.yml` is merged, not overwritten.
-- If the same top-level key conflicts, existing `all.yml` value stays, and host-specific differences remain in `host_vars/<hostname>.yaml`.
+- If you run `jtaf-xml2yaml` for additional role types into the same output folder, per-type shared values are written under `group_vars/device_<type>/all.yml`.
+- `group_vars/all.yml` is recomputed to keep only values shared across all available device-type group vars.
+- Host-specific differences remain in `host_vars/<hostname>.yaml`.
 
 7. Create a playbook that renders, previews diff, pushes, and verifies
 

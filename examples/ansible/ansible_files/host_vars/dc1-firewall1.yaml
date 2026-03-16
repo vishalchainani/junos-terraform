@@ -1,22 +1,5 @@
-version: 18.2R3.4
 system:
   host_name: dc1-firewall1
-  syslog:
-    file:
-    - name: messages
-      contents:
-      - name: any
-        any: true
-      - name: authorization
-        info: true
-    - name: interactive-commands
-      contents:
-      - name: interactive-commands
-        any: true
-  license:
-    autoupdate:
-      url:
-      - name: https://ae1.juniper.net/junos/key_retrieval
 security:
   policies:
     policy:
@@ -176,16 +159,6 @@ interfaces:
         inet:
           address:
           - name: 100.123.26.1/16
-policy_options:
-  policy_statement:
-  - name: ospf-default
-    term:
-    - name: '1'
-      from:
-        route_filter:
-        - address: 0.0.0.0/0
-          exact: true
-          accept: true
 routing_instances:
   instance:
   - name: fabric

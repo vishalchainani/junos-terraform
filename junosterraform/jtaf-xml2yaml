@@ -375,6 +375,127 @@ def merge_all_first_writer_wins(
     return merged_all
 
 
+def deep_merge_dicts(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
+    """Deep merge two dictionaries with override precedence."""
+    merged = copy.deepcopy(base)
+    for key, value in override.items():
+        if (
+            key in merged
+            and isinstance(merged[key], dict)
+            and isinstance(value, dict)
+        ):
+            merged[key] = deep_merge_dicts(merged[key], value)
+        else:
+            merged[key] = copy.deepcopy(value)
+    return merged
+
+
+def merge_device_type_shared(
+    group_vars_root: str,
+    device_group_name: str,
+    incoming_shared: dict[str, Any],
+    previous_global_shared: Optional[dict[str, Any]] = None,
+    stored_as_delta: bool = False,
+) -> dict[str, Any]:
+    """Merge shared values into group_vars/device_<type>/all.yml.
+
+    Existing and incoming payloads are intersected so values remain truly shared
+    across repeated runs for the same device type.
+    """
+    device_file = os.path.join(group_vars_root, device_group_name, "all.yml")
+    existing_shared = load_yaml_file(device_file)
+    if stored_as_delta:
+        existing_shared = deep_merge_dicts(previous_global_shared or {}, existing_shared)
+
+    if not existing_shared:
+        merged_shared = copy.deepcopy(incoming_shared)
+    elif not incoming_shared:
+        merged_shared = copy.deepcopy(existing_shared)
+    else:
+        merged_value = intersect_values(existing_shared, incoming_shared)
+        merged_shared = merged_value if isinstance(merged_value, dict) else {}
+
+    write_yaml_file(device_file, merged_shared)
+    return merged_shared
+
+
+def materialize_device_group_files(
+    group_vars_root: str,
+    base_global_shared: dict[str, Any],
+) -> None:
+    """Expand device group files from delta representation to full payloads."""
+    for entry in sorted(os.listdir(group_vars_root)):
+        entry_path = os.path.join(group_vars_root, entry)
+        if not os.path.isdir(entry_path) or not entry.startswith("device_"):
+            continue
+
+        device_file = os.path.join(entry_path, "all.yml")
+        if not os.path.exists(device_file):
+            continue
+
+        current_payload = load_yaml_file(device_file)
+        full_payload = deep_merge_dicts(base_global_shared, current_payload)
+        write_yaml_file(device_file, full_payload)
+
+
+def rebuild_global_shared_from_device_groups(group_vars_root: str) -> dict[str, Any]:
+    """Rebuild group_vars/all.yml as shared intersection across device groups."""
+    device_payloads: list[dict[str, Any]] = []
+
+    for entry in sorted(os.listdir(group_vars_root)):
+        entry_path = os.path.join(group_vars_root, entry)
+        if not os.path.isdir(entry_path):
+            continue
+        if not entry.startswith("device_"):
+            continue
+
+        device_file = os.path.join(entry_path, "all.yml")
+        if os.path.exists(device_file):
+            payload = load_yaml_file(device_file)
+            if isinstance(payload, dict):
+                device_payloads.append(payload)
+
+    if not device_payloads:
+        rebuilt_all: dict[str, Any] = {}
+    else:
+        rebuilt_all = copy.deepcopy(device_payloads[0])
+        for payload in device_payloads[1:]:
+            merged_value = intersect_values(rebuilt_all, payload)
+            rebuilt_all = merged_value if isinstance(merged_value, dict) else {}
+
+    write_yaml_file(os.path.join(group_vars_root, "all.yml"), rebuilt_all)
+    return rebuilt_all
+
+
+def convert_device_group_files_to_delta(
+    group_vars_root: str,
+    global_shared_payload: dict[str, Any],
+) -> None:
+    """Convert all device group files to delta against group_vars/all.yml."""
+    for entry in sorted(os.listdir(group_vars_root)):
+        entry_path = os.path.join(group_vars_root, entry)
+        if not os.path.isdir(entry_path) or not entry.startswith("device_"):
+            continue
+
+        device_file = os.path.join(entry_path, "all.yml")
+        if not os.path.exists(device_file):
+            continue
+
+        full_payload = load_yaml_file(device_file)
+        delta_payload = subtract_common(full_payload, global_shared_payload)
+        if delta_payload is _OMIT:
+            delta_payload = {}
+
+        if not delta_payload:
+            if os.path.exists(device_file):
+                os.remove(device_file)
+            if os.path.isdir(entry_path) and not os.listdir(entry_path):
+                os.rmdir(entry_path)
+            continue
+
+        write_yaml_file(device_file, delta_payload)
+
+
 def write_host_vars_flat(
     host_vars_root: str,
     hostname: str,
@@ -554,7 +675,7 @@ def write_inventory(
 
 
 def main() -> None:
-    """Generate Ansible inventory, group_vars/all.yml, and host_vars YAML.
+    """Generate Ansible inventory and hierarchical group_vars/host_vars YAML.
 
     Parses command-line arguments for trimmed JSON schema and XML config files,
     auto-detects device types from configuration, extracts shared configuration
@@ -563,6 +684,7 @@ def main() -> None:
     Output directory structure:
         hosts – Ansible inventory with [all] and optional derived groups
         group_vars/all.yml – Shared configuration for all hosts
+        group_vars/device_<type>/all.yml – Shared configuration for each device type
         host_vars/<hostname>.yaml – Per-host configuration deltas
     """
     parser = argparse.ArgumentParser(
@@ -615,6 +737,15 @@ def main() -> None:
         default=True,
         help='Auto-detect device types from XML config (enabled by default).',
     )
+    parser.add_argument(
+        '--device-group-delta',
+        action='store_true',
+        default=False,
+        help=(
+            'Write group_vars/device_<type>/all.yml as delta against '
+            'group_vars/all.yml. Default writes full per-type shared payloads.'
+        ),
+    )
     args = parser.parse_args()
 
     schema = load_schema(args.trimmed_json)
@@ -643,20 +774,40 @@ def main() -> None:
         shared_payloads[group_name] = shared_payload
         print(f"  {group_name}: {len(group_payloads)} hosts, {len(shared_payload)} keys")
 
-    # Merge top-level shared values into all.yml with first-writer-wins.
     all_shared_payload = shared_payloads.get("all", {})
-    merged_all_payload: dict[str, Any] = merge_all_first_writer_wins(
-        group_vars_dir,
-        all_shared_payload,
-    )
+    global_shared_payload: dict[str, Any]
+    active_type_baseline: dict[str, Any] = {}
 
-    # Use merged all.yml as baseline for host-specific deltas.
-    global_shared_payload = merged_all_payload if merged_all_payload else {}
+    if resolved_role_type:
+        previous_global_payload = load_yaml_file(os.path.join(group_vars_dir, "all.yml"))
+        if args.device_group_delta:
+            materialize_device_group_files(group_vars_dir, previous_global_payload)
+
+        sanitized_role_type = sanitize_group_name(resolved_role_type)
+        device_group_name = f"device_{sanitized_role_type}"
+        type_group_key = f"device_type:{sanitized_role_type}"
+        type_shared_payload = shared_payloads.get(type_group_key, all_shared_payload)
+
+        active_type_baseline = merge_device_type_shared(
+            group_vars_dir,
+            device_group_name,
+            type_shared_payload,
+            previous_global_shared=previous_global_payload,
+            stored_as_delta=args.device_group_delta,
+        )
+        global_shared_payload = rebuild_global_shared_from_device_groups(group_vars_dir)
+        if args.device_group_delta:
+            convert_device_group_files_to_delta(group_vars_dir, global_shared_payload)
+    else:
+        merged_all_payload = merge_all_first_writer_wins(group_vars_dir, all_shared_payload)
+        global_shared_payload = merged_all_payload if merged_all_payload else {}
+
+    host_baseline = deep_merge_dicts(global_shared_payload, active_type_baseline)
 
     hostnames = []
     for hostname, payload, _device_type in host_entries:
         hostnames.append(hostname)
-        write_host_vars_flat(host_vars_dir, hostname, payload, global_shared_payload)
+        write_host_vars_flat(host_vars_dir, hostname, payload, host_baseline)
 
     inventory_groups = build_inventory_groups(host_entries, groups)
     write_inventory(hosts_file, hostnames, inventory_groups)

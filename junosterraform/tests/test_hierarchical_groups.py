@@ -180,6 +180,7 @@ def test_xml2yaml_main_end_to_end(xml2yaml_mod, tmp_path, monkeypatch):
 
     assert (out_dir / "hosts").exists()
     assert (out_dir / "group_vars" / "all.yml").exists()
+    assert (out_dir / "group_vars" / "device_qfx" / "all.yml").exists()
     assert (out_dir / "host_vars" / "a.yaml").exists()
     assert (out_dir / "host_vars" / "b.yaml").exists()
     hosts_text = (out_dir / "hosts").read_text()
@@ -280,10 +281,11 @@ def test_xml2yaml_main_supports_external_playbook_paths(xml2yaml_mod, tmp_path, 
 
     assert hosts_file.exists()
     assert (group_vars_dir / "all.yml").exists()
+    assert (group_vars_dir / "device_qfx" / "all.yml").exists()
     assert (host_vars_dir / "leaf1.yaml").exists()
 
 
-def test_all_yaml_first_writer_wins_and_conflicts_stay_in_host_vars(xml2yaml_mod, tmp_path, monkeypatch):
+def test_option_b_device_group_vars_and_global_intersection(xml2yaml_mod, tmp_path, monkeypatch):
     schema = {
         "root": {
             "name": "root",
@@ -343,17 +345,106 @@ def test_all_yaml_first_writer_wins_and_conflicts_stay_in_host_vars(xml2yaml_mod
     xml2yaml_mod.main()
 
     all_payload_run2 = yaml.safe_load((group_vars_dir / "all.yml").read_text())
-    # First writer wins in all.yml.
-    assert all_payload_run2["system"]["domain_name"] == "alpha.local"
-    assert all_payload_run2["routing_options"]["router_id"] == "1.1.1.1"
+    device_payload_run2 = yaml.safe_load((group_vars_dir / "device_qfx" / "all.yml").read_text())
 
-    # No type-specific group_vars file should be created.
-    assert not (group_vars_dir / "qfx" / "all.yml").exists()
+    # Global all.yml is rebuilt as intersection across device groups.
+    assert all_payload_run2["system"]["product_name"] == "QFX5100"
+    assert "domain_name" not in all_payload_run2["system"]
+    assert all_payload_run2.get("routing_options") == {}
 
-    # Conflicting values remain host-specific in host_vars.
+    # Type-specific shared file tracks common values for that type across runs.
+    assert device_payload_run2["system"]["product_name"] == "QFX5100"
+    assert "domain_name" not in device_payload_run2["system"]
+
+    # Host-specific values remain in host_vars.
     host_b = yaml.safe_load((out_dir / "host_vars" / "b.yaml").read_text())
+    assert host_b["system"]["host_name"] == "b"
     assert host_b["system"]["domain_name"] == "beta.local"
     assert host_b["routing_options"]["router_id"] == "2.2.2.2"
+
+
+def test_device_group_delta_flag_writes_delta(xml2yaml_mod, tmp_path, monkeypatch):
+    schema = {
+        "root": {
+            "name": "root",
+            "children": [
+                {
+                    "name": "configuration",
+                    "children": [
+                        {"name": "system", "type": "container", "children": [
+                            {"name": "host-name", "type": "leaf"},
+                            {"name": "product-name", "type": "leaf"},
+                            {"name": "domain-name", "type": "leaf"},
+                        ]},
+                    ],
+                }
+            ]
+        }
+    }
+    schema_file = tmp_path / "trimmed_schema.json"
+    schema_file.write_text(json.dumps(schema))
+
+    out_dir = tmp_path / "out"
+
+    xml1 = tmp_path / "qfx-a.xml"
+    xml1.write_text(
+        "<configuration><system><host-name>a</host-name><product-name>QFX5100</product-name>"
+        "<domain-name>alpha.local</domain-name></system></configuration>"
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "jtaf-xml2yaml",
+            "-j",
+            str(schema_file),
+            "-x",
+            str(xml1),
+            "-d",
+            str(out_dir),
+            "-t",
+            "qfx",
+            "--device-group-delta",
+        ],
+    )
+    xml2yaml_mod.main()
+
+    group_all_1 = yaml.safe_load((out_dir / "group_vars" / "all.yml").read_text())
+    assert group_all_1["system"]["product_name"] == "QFX5100"
+    assert group_all_1["system"]["domain_name"] == "alpha.local"
+    assert not (out_dir / "group_vars" / "device_qfx" / "all.yml").exists()
+
+    xml2 = tmp_path / "qfx-b.xml"
+    xml2.write_text(
+        "<configuration><system><host-name>b</host-name><product-name>QFX5100</product-name>"
+        "<domain-name>beta.local</domain-name></system></configuration>"
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "jtaf-xml2yaml",
+            "-j",
+            str(schema_file),
+            "-x",
+            str(xml2),
+            "-d",
+            str(out_dir),
+            "-t",
+            "qfx",
+            "--device-group-delta",
+        ],
+    )
+    xml2yaml_mod.main()
+
+    group_all_2 = yaml.safe_load((out_dir / "group_vars" / "all.yml").read_text())
+    host_b = yaml.safe_load((out_dir / "host_vars" / "b.yaml").read_text())
+
+    assert group_all_2["system"]["product_name"] == "QFX5100"
+    assert "domain_name" not in group_all_2["system"]
+    assert not (out_dir / "group_vars" / "device_qfx" / "all.yml").exists()
+    assert host_b["system"]["host_name"] == "b"
+    assert host_b["system"]["domain_name"] == "beta.local"
 
 
 def test_jtaf_ansible_main_generates_role(ansible_mod, tmp_path, monkeypatch):

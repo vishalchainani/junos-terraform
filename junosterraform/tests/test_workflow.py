@@ -234,12 +234,17 @@ def test_yang2ansible():
         derived_groups = re.findall(r"^\[([^\]]+)\]$", hosts_text, flags=re.MULTILINE)
         derived_groups = [group for group in derived_groups if group != "all"]
 
-        # Inventory can include derived groups, but vars are kept in group_vars/all.yml
-        # and host-specific values in host_vars/*.yaml only.
+        # Inventory derived groups should map to group_vars/<group>/all.yml
+        # in addition to group_vars/all.yml.
         for derived_group in derived_groups:
-            group_vars_subdir = os.path.join(ansible_files_dir, "group_vars", derived_group)
-            assert not os.path.exists(group_vars_subdir), (
-                f"Did not expect derived group vars directory: {group_vars_subdir}"
+            group_vars_file_for_group = os.path.join(
+                ansible_files_dir,
+                "group_vars",
+                derived_group,
+                "all.yml",
+            )
+            assert os.path.exists(group_vars_file_for_group), (
+                f"Expected derived group vars file not found: {group_vars_file_for_group}"
             )
 
         # Generated role should use hierarchy merge flow and merge directive filter.
