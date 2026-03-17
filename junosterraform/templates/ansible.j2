@@ -67,8 +67,12 @@
         {# LIST ELSE #}
 		{%- else -%}	
 
-{%- if level>1 -%}
+{%- if ele.type == 'container' -%}
+{{'\n'+' '*4*level}}{{'{%-'}} if {{ pathvar + '.' + path2variable(preparename(ele.name)) }} is defined and (({{ pathvar + '.' + path2variable(preparename(ele.name)) }} is mapping and ({{ pathvar + '.' + path2variable(preparename(ele.name)) }}.values() | select | list | length > 0)) or ({{ pathvar + '.' + path2variable(preparename(ele.name)) }} is not mapping and {{ pathvar + '.' + path2variable(preparename(ele.name)) }})) {{'%}'}}
+{%- elif level>1 -%}
 {{'\n'+' '*4*level}}{{'{%-'}} if {{ pathvar + '.' + path2variable(preparename(ele.name)) }} is defined {{'%}'}}
+{%- else -%}
+{# no wrapper needed for non-container top-level nodes #}
 {%- endif -%}
 {% if ele.type != "leaf-list" %}
 {{'\n'+' '*4*level}}<{{ele.name}}>
@@ -129,7 +133,7 @@
 {%- if ele.type != "leaf-list" -%}
 {{'\n'+' '*4*level}}</{{ele.name}}>
 {% endif %}
-{%- if level>1 -%}
+{%- if ele.type == 'container' or level>1 -%}
 {{' '*4*level}}{{'{%-'}} endif {{'%}'}}
 {%- endif %}
 
