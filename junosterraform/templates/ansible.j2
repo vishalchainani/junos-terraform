@@ -49,16 +49,24 @@
 			{%- set pathvar=path2variable(ele.path) -%}
 		{# INDEXVAR ENDIF #}
 		{%- endif -%}
+		{%- set ele_name_var = path2variable(preparename(ele.name)) -%}
+		{%- if pathvar -%}
+			{%- set nodevar = pathvar + '.' + ele_name_var -%}
+			{%- set list_itervar = pathvar + '.get("' + ele_name_var + '")' -%}
+		{%- else -%}
+			{%- set nodevar = ele_name_var -%}
+			{%- set list_itervar = ele_name_var -%}
+		{%- endif -%}
 
         {# LIST IF #}
         {%- if ele.type == 'list' -%}
 
-{{'\n'+' '*4*level}}{{'{%-'}} if {{ pathvar + '.' + path2variable(preparename(ele.name)) }} is defined {{'%}'}}
-{{'\n'+' '*4*level}}{{'{%-'}} for i_{{level}} in {{pathvar+'.get("'+path2variable(preparename(ele.name))+'")' }} {{'%}'}}
+{{'\n'+' '*4*level}}{{'{%-'}} if {{ nodevar }} is defined {{'%}'}}
+{{'\n'+' '*4*level}}{{'{%-'}} for i_{{level}} in {{ list_itervar }} {{'%}'}}
 			{%- set indexvar = 'i_{0:d}'.format(level) -%}    
 
 {%- if level>1 -%}
-{{'\n'+' '*4*level}}{{'{%-'}} if {{ pathvar + '.' + path2variable(preparename(ele.name)) }} is defined {{'%}'}}
+{{'\n'+' '*4*level}}{{'{%-'}} if {{ nodevar }} is defined {{'%}'}}
 {%- endif -%}
 {#{% if ele.type != "leaf-list" %}#}
 {{'\n'+' '*4*level}}<{{ele.name}}>
@@ -68,9 +76,9 @@
 		{%- else -%}	
 
 {%- if ele.type == 'container' -%}
-{{'\n'+' '*4*level}}{{'{%-'}} if {{ pathvar + '.' + path2variable(preparename(ele.name)) }} is defined and (({{ pathvar + '.' + path2variable(preparename(ele.name)) }} is mapping and ({{ pathvar + '.' + path2variable(preparename(ele.name)) }}.values() | select | list | length > 0)) or ({{ pathvar + '.' + path2variable(preparename(ele.name)) }} is not mapping and {{ pathvar + '.' + path2variable(preparename(ele.name)) }})) {{'%}'}}
+{{'\n'+' '*4*level}}{{'{%-'}} if {{ nodevar }} is defined and (({{ nodevar }} is mapping and ({{ nodevar }}.values() | select | list | length > 0)) or ({{ nodevar }} is not mapping and {{ nodevar }})) {{'%}'}}
 {%- elif level>1 -%}
-{{'\n'+' '*4*level}}{{'{%-'}} if {{ pathvar + '.' + path2variable(preparename(ele.name)) }} is defined {{'%}'}}
+{{'\n'+' '*4*level}}{{'{%-'}} if {{ nodevar }} is defined {{'%}'}}
 {%- else -%}
 {# no wrapper needed for non-container top-level nodes #}
 {%- endif -%}
@@ -90,10 +98,10 @@
         {# LEAF-LIST IF #}
 		
 		{% if ele.type=="leaf-list" %}
-		{{- '\n'+' '*4*level}}{{'{%-'}} if {{ pathvar + '.' + path2variable(preparename(ele.name)) }} is boolean {{'%}'}}
+		{{- '\n'+' '*4*level}}{{'{%-'}} if {{ nodevar }} is boolean {{'%}'}}
 {{' '*4*level}}<{{ele.name}}/>
 {{' '*4*level}}{{'{%-'}} else {{'%}'}}
-{{' '*4*level}}<{{ele.name}}>{{'{{'}}{{ pathvar + '.' + path2variable(preparename(ele.name)) }}{{'}}'}}</{{ele.name}}>
+{{' '*4*level}}<{{ele.name}}>{{'{{'}}{{ nodevar }}{{'}}'}}</{{ele.name}}>
 {{' '*4*level}}{{'{%-'}} endif {{'%}'}}
         {# LEAF-LIST ELSE #}
 		{% else %}
