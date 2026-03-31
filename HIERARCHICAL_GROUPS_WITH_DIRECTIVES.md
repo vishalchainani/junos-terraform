@@ -34,7 +34,7 @@ jtaf-xml2yaml \
 ansible-provider-junos-qfx/
 ├── group_vars/
 │   ├── all.yml                    # Global defaults (all hosts)
-│   └── device_qfx/
+│   └── qfx/
 │       └── all.yml               # QFX shared values
 ├── host_vars/
 │   ├── dc1-spine1.yaml           # Spine1 device config (delta only)
@@ -55,7 +55,7 @@ Merge order in playbook (precedence from lowest to highest):
 ```
 group_vars/all.yml
         ↓
-group_vars/device_qfx/all.yml
+group_vars/qfx/all.yml
   ↓
 host_vars/dc1-spine1.yaml
         ↓
@@ -68,7 +68,7 @@ The merge order (precedence from lowest to highest) is:
 
 ```
 1. group_vars/all.yml              (global defaults - all hosts)
-2. group_vars/device_<type>/all.yml (device-type shared values)
+2. group_vars/<type>/all.yml (device-type shared values)
 3. host_vars/<hostname>.yaml       (host-specific overrides - device delta)
 ```
 
@@ -188,8 +188,8 @@ interfaces:
 3. Fallback structural grouping if neither source is available
 
 Role type is used to:
-1. Populate inventory group `[device_<type>]`
-2. Write per-type shared values under `group_vars/device_<type>/all.yml`
+1. Populate inventory group `[<type>]`
+2. Write per-type shared values under `group_vars/<type>/all.yml`
 3. Rebuild `group_vars/all.yml` from common values across device-type group vars
 
 ## Inventory Generation
@@ -203,7 +203,7 @@ dc1-spine2
 dc1-leaf1
 dc1-leaf2
 
-[device_qfx]
+[qfx]
 dc1-spine1
 dc1-spine2
 dc1-leaf1
@@ -218,7 +218,7 @@ Use in playbooks:
     - name: Apply to all hosts
       ...
 
-- hosts: device_qfx
+- hosts: qfx
   tasks:
     - name: QFX-specific configuration
       ...
@@ -237,7 +237,7 @@ The generated Ansible role automatically:
 ```yaml
 ---
 # Hierarchical variable merging
-# Merge order: group_vars/all.yml -> group_vars/device_<type>/all.yml -> host_vars/<host>.yml
+# Merge order: group_vars/all.yml -> group_vars/<type>/all.yml -> host_vars/<host>.yml
 
 # Build effective config from Ansible-resolved vars
 - name: Merge variables from hierarchy
@@ -348,7 +348,7 @@ jtaf-xml2yaml --help
       Optional host_vars path; defaults to <directory>/host_vars
 
     --device-group-delta
-      Optional: write group_vars/device_<type>/all.yml as delta against group_vars/all.yml
+      Optional: write group_vars/<type>/all.yml as delta against group_vars/all.yml
       Empty per-type delta files are omitted
 
   --auto-detect-hierarchy
@@ -402,7 +402,7 @@ ansible-playbook -i hosts jtaf-playbook.yml --check --diff
 
 1. **Check hierarchy** - Values from higher precedence (host_vars) override lower precedence (group_vars)
 2. **Check for typos** - YAML key names are case-sensitive
-3. **Verify variables loaded** - Check that host_vars/<hostname>.yaml, group_vars/all.yml, and group_vars/device_<type>/all.yml exist
+3. **Verify variables loaded** - Check that host_vars/<hostname>.yaml, group_vars/all.yml, and group_vars/<type>/all.yml exist
 
 ### Custom filter not found
 

@@ -1,0 +1,53 @@
+system:
+  license:
+    autoupdate:
+      url:
+      - name: https://ae1.juniper.net/junos/key_retrieval
+  syslog:
+    file:
+    - name: messages
+      contents:
+      - name: any
+        any: true
+      - name: authorization
+        info: true
+    - name: interactive-commands
+      contents:
+      - name: interactive-commands
+        any: true
+version: 18.2R3.4
+security:
+  screen:
+    ids_option:
+    - name: untrust-screen
+      icmp:
+        ping_death: true
+      ip:
+        source_route_option: true
+        tear_drop: true
+      tcp:
+        syn_flood:
+          alarm_threshold: '1024'
+          attack_threshold: '200'
+          source_threshold: '1024'
+          destination_threshold: '2048'
+          undocumented:
+            queue_size: '2000'
+          timeout: '20'
+        land: true
+  log:
+    report: ''
+    mode: stream
+  zones: {}
+  policies: {}
+routing_instances: {}
+policy_options:
+  policy_statement:
+  - name: ospf-default
+    term:
+    - name: '1'
+      from:
+        route_filter:
+        - address: 0.0.0.0/0
+          exact: true
+          accept: true

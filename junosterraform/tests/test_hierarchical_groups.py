@@ -59,9 +59,18 @@ def test_extract_hierarchy_groups(xml2yaml_mod):
         ("dc1-leaf2", {"a": 2, "x": {"y": 2}}, "qfx"),
         ("dc1-host3", {"b": 3}, "qfx"),
     ], role_type="vqfx-role")
-    assert sorted(groups.keys()) == ["all", "device_type:vqfx_role"]
+    assert sorted(groups.keys()) == ["all", "device_type:vqfx"]
     assert len(groups["all"]) == 3
-    assert len(groups["device_type:vqfx_role"]) == 3
+    assert len(groups["device_type:vqfx"]) == 3
+
+
+def test_extract_hierarchy_groups_normalizes_ansible_role_suffix(xml2yaml_mod):
+    groups = xml2yaml_mod.extract_hierarchy_groups([
+        ("dc1-leaf1", {"a": 1}, "qfx"),
+        ("dc1-leaf2", {"a": 2}, "qfx"),
+    ], role_type="vqfx_ansible_role")
+    assert sorted(groups.keys()) == ["all", "device_type:vqfx"]
+    assert len(groups["device_type:vqfx"]) == 2
 
 
 def test_extract_hierarchy_groups_without_role_type_uses_structural_groups(xml2yaml_mod):
@@ -180,12 +189,12 @@ def test_xml2yaml_main_end_to_end(xml2yaml_mod, tmp_path, monkeypatch):
 
     assert (out_dir / "hosts").exists()
     assert (out_dir / "group_vars" / "all.yml").exists()
-    assert (out_dir / "group_vars" / "device_qfx" / "all.yml").exists()
+    assert (out_dir / "group_vars" / "qfx" / "all.yml").exists()
     assert (out_dir / "host_vars" / "a.yaml").exists()
     assert (out_dir / "host_vars" / "b.yaml").exists()
     hosts_text = (out_dir / "hosts").read_text()
     assert "[all]" in hosts_text
-    assert "[device_qfx]" in hosts_text
+    assert "[qfx]" in hosts_text
 
 
 def test_write_inventory_merges_existing_hosts(xml2yaml_mod, tmp_path):
@@ -197,7 +206,7 @@ def test_write_inventory_merges_existing_hosts(xml2yaml_mod, tmp_path):
     xml2yaml_mod.write_inventory(
         str(hosts_file),
         ["new1"],
-        {"device_qfx": ["new1"]},
+        {"qfx": ["new1"]},
     )
 
     inventory_text = hosts_file.read_text()
@@ -205,7 +214,7 @@ def test_write_inventory_merges_existing_hosts(xml2yaml_mod, tmp_path):
     assert "old1" in inventory_text
     assert "new1" in inventory_text
     assert "[legacy]" in inventory_text
-    assert "[device_qfx]" in inventory_text
+    assert "[qfx]" in inventory_text
 
 
 def test_xml2yaml_main_missing_configuration_raises(xml2yaml_mod, tmp_path, monkeypatch):
@@ -281,7 +290,7 @@ def test_xml2yaml_main_supports_external_playbook_paths(xml2yaml_mod, tmp_path, 
 
     assert hosts_file.exists()
     assert (group_vars_dir / "all.yml").exists()
-    assert (group_vars_dir / "device_qfx" / "all.yml").exists()
+    assert (group_vars_dir / "qfx" / "all.yml").exists()
     assert (host_vars_dir / "leaf1.yaml").exists()
 
 
@@ -345,7 +354,7 @@ def test_option_b_device_group_vars_and_global_intersection(xml2yaml_mod, tmp_pa
     xml2yaml_mod.main()
 
     all_payload_run2 = yaml.safe_load((group_vars_dir / "all.yml").read_text())
-    device_payload_run2 = yaml.safe_load((group_vars_dir / "device_qfx" / "all.yml").read_text())
+    device_payload_run2 = yaml.safe_load((group_vars_dir / "qfx" / "all.yml").read_text())
 
     # Global all.yml is rebuilt as intersection across device groups.
     assert all_payload_run2["system"]["product_name"] == "QFX5100"
@@ -412,7 +421,7 @@ def test_device_group_delta_flag_writes_delta(xml2yaml_mod, tmp_path, monkeypatc
     group_all_1 = yaml.safe_load((out_dir / "group_vars" / "all.yml").read_text())
     assert group_all_1["system"]["product_name"] == "QFX5100"
     assert group_all_1["system"]["domain_name"] == "alpha.local"
-    assert not (out_dir / "group_vars" / "device_qfx" / "all.yml").exists()
+    assert not (out_dir / "group_vars" / "qfx" / "all.yml").exists()
 
     xml2 = tmp_path / "qfx-b.xml"
     xml2.write_text(
@@ -442,7 +451,7 @@ def test_device_group_delta_flag_writes_delta(xml2yaml_mod, tmp_path, monkeypatc
 
     assert group_all_2["system"]["product_name"] == "QFX5100"
     assert "domain_name" not in group_all_2["system"]
-    assert not (out_dir / "group_vars" / "device_qfx" / "all.yml").exists()
+    assert not (out_dir / "group_vars" / "qfx" / "all.yml").exists()
     assert host_b["system"]["host_name"] == "b"
     assert host_b["system"]["domain_name"] == "beta.local"
 

@@ -240,6 +240,19 @@ def sanitize_group_name(name: str) -> str:
     return sanitized or "common"
 
 
+def normalize_role_type(role_type: str) -> str:
+    """Normalize role type input into a stable device type label.
+
+    Examples:
+        qfx -> qfx
+        vqfx-role -> vqfx_role
+        vqfx_ansible_role -> vqfx
+    """
+    normalized = sanitize_group_name(role_type)
+    normalized = re.sub(r"(?:_ansible)?_role$", "", normalized)
+    return normalized or "common"
+
+
 def extract_hierarchy_groups(
     host_entries: list[tuple[str, dict[str, Any], Optional[str]]],
     role_type: Optional[str] = None,
@@ -258,7 +271,7 @@ def extract_hierarchy_groups(
     """
     groups: dict[str, list[dict[str, Any]]] = {"all": []}
     if role_type:
-        device_type = sanitize_group_name(role_type)
+        device_type = normalize_role_type(role_type)
         for _hostname, payload, _device_type in host_entries:
             groups["all"].append(payload)
         groups[f"device_type:{device_type}"] = list(groups["all"])
@@ -397,7 +410,7 @@ def merge_device_type_shared(
     previous_global_shared: Optional[dict[str, Any]] = None,
     stored_as_delta: bool = False,
 ) -> dict[str, Any]:
-    """Merge shared values into group_vars/device_<type>/all.yml.
+    """Merge shared values into group_vars/<type>/all.yml.
 
     Existing and incoming payloads are intersected so values remain truly shared
     across repeated runs for the same device type.
@@ -419,19 +432,30 @@ def merge_device_type_shared(
     return merged_shared
 
 
+def iter_group_var_subdirs_with_all(group_vars_root: str) -> list[str]:
+    """Return subdirectory names under group_vars that contain all.yml."""
+    subdirs: list[str] = []
+    if not os.path.isdir(group_vars_root):
+        return subdirs
+
+    for entry in sorted(os.listdir(group_vars_root)):
+        entry_path = os.path.join(group_vars_root, entry)
+        if not os.path.isdir(entry_path):
+            continue
+        if os.path.exists(os.path.join(entry_path, "all.yml")):
+            subdirs.append(entry)
+
+    return subdirs
+
+
 def materialize_device_group_files(
     group_vars_root: str,
     base_global_shared: dict[str, Any],
 ) -> None:
     """Expand device group files from delta representation to full payloads."""
-    for entry in sorted(os.listdir(group_vars_root)):
+    for entry in iter_group_var_subdirs_with_all(group_vars_root):
         entry_path = os.path.join(group_vars_root, entry)
-        if not os.path.isdir(entry_path) or not entry.startswith("device_"):
-            continue
-
         device_file = os.path.join(entry_path, "all.yml")
-        if not os.path.exists(device_file):
-            continue
 
         current_payload = load_yaml_file(device_file)
         full_payload = deep_merge_dicts(base_global_shared, current_payload)
@@ -442,18 +466,12 @@ def rebuild_global_shared_from_device_groups(group_vars_root: str) -> dict[str, 
     """Rebuild group_vars/all.yml as shared intersection across device groups."""
     device_payloads: list[dict[str, Any]] = []
 
-    for entry in sorted(os.listdir(group_vars_root)):
+    for entry in iter_group_var_subdirs_with_all(group_vars_root):
         entry_path = os.path.join(group_vars_root, entry)
-        if not os.path.isdir(entry_path):
-            continue
-        if not entry.startswith("device_"):
-            continue
-
         device_file = os.path.join(entry_path, "all.yml")
-        if os.path.exists(device_file):
-            payload = load_yaml_file(device_file)
-            if isinstance(payload, dict):
-                device_payloads.append(payload)
+        payload = load_yaml_file(device_file)
+        if isinstance(payload, dict):
+            device_payloads.append(payload)
 
     if not device_payloads:
         rebuilt_all: dict[str, Any] = {}
@@ -472,14 +490,9 @@ def convert_device_group_files_to_delta(
     global_shared_payload: dict[str, Any],
 ) -> None:
     """Convert all device group files to delta against group_vars/all.yml."""
-    for entry in sorted(os.listdir(group_vars_root)):
+    for entry in iter_group_var_subdirs_with_all(group_vars_root):
         entry_path = os.path.join(group_vars_root, entry)
-        if not os.path.isdir(entry_path) or not entry.startswith("device_"):
-            continue
-
         device_file = os.path.join(entry_path, "all.yml")
-        if not os.path.exists(device_file):
-            continue
 
         full_payload = load_yaml_file(device_file)
         delta_payload = subtract_common(full_payload, global_shared_payload)
@@ -595,7 +608,7 @@ def build_inventory_groups(
         if group_name.startswith("group:"):
             inventory_group_name = group_name.split(":", 1)[1]
         elif group_name.startswith("device_type:"):
-            inventory_group_name = f"device_{group_name.split(':', 1)[1]}"
+            inventory_group_name = group_name.split(":", 1)[1]
         else:
             continue
 
@@ -684,7 +697,7 @@ def main() -> None:
     Output directory structure:
         hosts – Ansible inventory with [all] and optional derived groups
         group_vars/all.yml – Shared configuration for all hosts
-        group_vars/device_<type>/all.yml – Shared configuration for each device type
+        group_vars/<type>/all.yml – Shared configuration for each device type
         host_vars/<hostname>.yaml – Per-host configuration deltas
     """
     parser = argparse.ArgumentParser(
@@ -742,7 +755,7 @@ def main() -> None:
         action='store_true',
         default=False,
         help=(
-            'Write group_vars/device_<type>/all.yml as delta against '
+            'Write group_vars/<type>/all.yml as delta against '
             'group_vars/all.yml. Default writes full per-type shared payloads.'
         ),
     )
@@ -783,8 +796,14 @@ def main() -> None:
         if args.device_group_delta:
             materialize_device_group_files(group_vars_dir, previous_global_payload)
 
-        sanitized_role_type = sanitize_group_name(resolved_role_type)
-        device_group_name = f"device_{sanitized_role_type}"
+        sanitized_role_type = normalize_role_type(resolved_role_type)
+        legacy_group_name = f"device_{sanitized_role_type}"
+        legacy_group_path = os.path.join(group_vars_dir, legacy_group_name)
+        device_group_name = sanitized_role_type
+        device_group_path = os.path.join(group_vars_dir, device_group_name)
+        if os.path.isdir(legacy_group_path) and not os.path.exists(device_group_path):
+            os.rename(legacy_group_path, device_group_path)
+
         type_group_key = f"device_type:{sanitized_role_type}"
         type_shared_payload = shared_payloads.get(type_group_key, all_shared_payload)
 

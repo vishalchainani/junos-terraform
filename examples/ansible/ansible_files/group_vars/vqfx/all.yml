@@ -1,0 +1,37 @@
+protocols:
+  igmp_snooping:
+    vlan:
+    - name: default
+  bgp: {}
+routing_options:
+  forwarding_table:
+    export: PFE-LB
+    ecmp_fast_reroute: true
+system:
+  syslog:
+    file:
+    - name: messages
+      contents:
+      - name: any
+        notice: true
+      - name: authorization
+        info: true
+    - name: interactive-commands
+      contents:
+      - name: interactive-commands
+        any: true
+  extensions:
+    providers:
+    - name: juniper
+      license_type:
+      - name: juniper
+        deployment_scope: commercial
+    - name: chef
+      license_type:
+      - name: juniper
+        deployment_scope: commercial
+forwarding_options:
+  storm_control_profiles:
+  - name: default
+    all: ''
+version: 18.1R3-S5.3

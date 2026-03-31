@@ -13,7 +13,7 @@ dc1-firewall2
 dc2-firewall1
 dc2-firewall2
 
-[device_vqfx_ansible_role]
+[vqfx]
 dc1-borderleaf1
 dc1-borderleaf2
 dc1-leaf1
@@ -24,7 +24,7 @@ dc1-spine2
 dc2-spine1
 dc2-spine2
 
-[device_srx_ansible_role]
+[srx]
 dc1-firewall1
 dc1-firewall2
 dc2-firewall1
