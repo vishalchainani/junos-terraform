@@ -1,0 +1,81 @@
+interfaces:
+  interface:
+  - unit:
+    - family:
+        inet:
+          address:
+          - name: 10.30.131.1/30
+      name: '0'
+    name: xe-0/0/0
+  - unit:
+    - family:
+        inet:
+          address:
+          - name: 10.30.132.1/30
+      name: '0'
+    name: xe-0/0/1
+  - unit:
+    - family:
+        inet:
+          address:
+          - name: 10.30.135.1/30
+      name: '0'
+    name: xe-0/0/2
+  - unit:
+    - family:
+        inet:
+          address:
+          - name: 10.30.136.1/30
+      name: '0'
+    name: xe-0/0/3
+  - unit:
+    - family:
+        inet:
+          address:
+          - name: 10.30.137.1/30
+      name: '0'
+    name: xe-0/0/4
+  - unit:
+    - family:
+        inet:
+          address:
+          - name: 100.123.24.3/16
+      name: '0'
+    name: em0
+  - unit:
+    - family:
+        inet:
+          address:
+          - name: 10.30.100.3/32
+      name: '0'
+    name: lo0
+  _merge_list_directives:
+    interface:
+      _merge_directive: merge_by_key
+      _merge_key: name
+  _merge_directive: merge_recursive
+
+
+system:
+  host_name: dc1-spine1
+  _merge_directive: merge_recursive
+routing_options:
+  router_id: 10.30.100.3
+  _merge_directive: merge_recursive
+policy_options:
+  community:
+  - name: dc1-spine1
+    members: '65501:1'
+  _merge_directive: merge_recursive
+protocols:
+  bgp:
+    group:
+    - name: EVPN_iBGP
+      local_address: 10.30.100.3
+      cluster: 10.30.100.3
+    - name: IPCLOS_eBGP
+      local_as:
+        as_number: '65501'
+    _merge_directive: merge_recursive
+  _merge_directive: merge_recursive
+_merge_directive: merge_recursive

@@ -1,0 +1,202 @@
+protocols:
+  evpn:
+    default_gateway: do-not-advertise
+    encapsulation: vxlan
+    multicast_mode: ingress-replication
+  bgp:
+    group:
+    - type: external
+      name: WAN_OVERLAY_eBGP
+      family:
+        evpn:
+          signaling:
+            delay_route_advertisements:
+              minimum_delay:
+                routing_uptime: '480'
+      multihop:
+        no_nexthop_change: true
+      neighbor:
+      - description: DCI EBGP peering to 10.30.100.8
+        name: 10.30.100.8
+        peer_as: '65201'
+      - description: DCI EBGP peering to 10.30.100.9
+        name: 10.30.100.9
+        peer_as: '65201'
+      multipath:
+        multiple_as: true
+      local_as:
+        as_number: '65200'
+    - neighbor:
+      - name: 10.30.100.3
+      - name: 10.30.100.4
+      name: EVPN_iBGP
+routing_options:
+  forwarding_table:
+    chained_composite_next_hop:
+      ingress:
+        evpn: true
+policy_options:
+  policy_statement:
+  - term:
+    - from:
+        protocol: direct
+      name: fm_direct
+      then:
+        accept: true
+    - from:
+        protocol: static
+      name: fm_static
+      then:
+        accept: true
+    - from:
+        protocol: ospf
+        route_filter:
+        - address: 0.0.0.0/0
+          exact: true
+      name: fm_v4_default
+      then:
+        accept: true
+    - from:
+        protocol: evpn
+        route_filter:
+        - address: 0::0/0
+          prefix_length_range: /128-/128
+      name: fm_v6_host
+      then:
+        accept: true
+    name: EVPN_T5_EXPORT
+  - term:
+    - from:
+        protocol: evpn
+      name: '10'
+      then:
+        accept: true
+    - name: '100'
+      then:
+        reject: true
+    name: to-ospf
+routing_instances:
+  instance:
+  - protocols:
+      evpn:
+        ip_prefix_routes:
+          vni: '10001'
+          encapsulation: vxlan
+          advertise: direct-nexthop
+          export: EVPN_T5_EXPORT
+      ospf:
+        area:
+        - interface:
+          - metric: '100'
+            name: xe-0/0/2.1
+          - metric: '200'
+            name: xe-0/0/3.1
+          name: 0.0.0.0
+        export: to-ospf
+    vrf_table_label: ''
+    routing_options:
+      auto_export: ''
+    instance_type: vrf
+    interface:
+    - name: xe-0/0/2.1
+    - name: xe-0/0/3.1
+    - name: lo0.10001
+    name: VRF_10001
+    vrf_target:
+      community: target:1:10001
+  - protocols:
+      evpn:
+        ip_prefix_routes:
+          vni: '10002'
+          encapsulation: vxlan
+          advertise: direct-nexthop
+          export: EVPN_T5_EXPORT
+      ospf:
+        area:
+        - interface:
+          - metric: '100'
+            name: xe-0/0/2.2
+          - metric: '200'
+            name: xe-0/0/3.2
+          name: 0.0.0.0
+        export: to-ospf
+    vrf_table_label: ''
+    routing_options:
+      auto_export: ''
+    instance_type: vrf
+    interface:
+    - name: xe-0/0/2.2
+    - name: xe-0/0/3.2
+    - name: lo0.10002
+    name: VRF_10002
+    vrf_target:
+      community: target:1:10002
+  - protocols:
+      evpn:
+        ip_prefix_routes:
+          vni: '10003'
+          encapsulation: vxlan
+          advertise: direct-nexthop
+          export: EVPN_T5_EXPORT
+      ospf:
+        area:
+        - interface:
+          - metric: '100'
+            name: xe-0/0/2.3
+          - metric: '200'
+            name: xe-0/0/3.3
+          name: 0.0.0.0
+        export: to-ospf
+    vrf_table_label: ''
+    routing_options:
+      auto_export: ''
+    instance_type: vrf
+    interface:
+    - name: xe-0/0/2.3
+    - name: xe-0/0/3.3
+    - name: lo0.10003
+    name: VRF_10003
+    vrf_target:
+      community: target:1:10003
+interfaces:
+  interface:
+  - description: '*** to dc1-spine1 ***'
+    name: xe-0/0/0
+  - description: '*** to dc1-spine2 ***'
+    name: xe-0/0/1
+  - vlan_tagging: true
+    unit:
+    - vlan_id: '1'
+      name: '1'
+    - vlan_id: '2'
+      name: '2'
+    - vlan_id: '3'
+      name: '3'
+    name: xe-0/0/2
+  - vlan_tagging: true
+    name: xe-0/0/3
+    unit:
+    - vlan_id: '1'
+      name: '1'
+    - vlan_id: '2'
+      name: '2'
+    - vlan_id: '3'
+      name: '3'
+  - unit:
+    - name: '0'
+    name: xe-0/0/4
+    description: '*** to wan-pe1 ***'
+  - unit:
+    - name: '10001'
+      description: Loopback for VXLAN control packets for VRF_10001
+    - name: '10002'
+      description: Loopback for VXLAN control packets for VRF_10002
+    - name: '10003'
+      description: Loopback for VXLAN control packets for VRF_10003
+    name: lo0
+switch_options:
+  vrf_target:
+    community: target:9999:9999
+    auto: ''
+  vtep_source_interface:
+    interface_name: lo0.0

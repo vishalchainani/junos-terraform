@@ -1,0 +1,22 @@
+protocols:
+  evpn:
+    extended_vni_list: all
+    _merge_directive: merge_recursive
+vlans:
+  vlan:
+  - name: vlan_1001
+    vlan_id: '1001'
+    l3_interface: irb.1001
+    vxlan:
+      vni: '1001'
+  - name: vlan_2001
+    vlan_id: '2001'
+    l3_interface: irb.2001
+    vxlan:
+      vni: '2001'
+  - name: vlan_3001
+    vlan_id: '3001'
+    l3_interface: irb.3001
+    vxlan:
+      vni: '3001'
+_merge_directive: merge_recursive

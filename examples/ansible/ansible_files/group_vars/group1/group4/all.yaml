@@ -1,0 +1,23 @@
+protocols:
+  bgp:
+    group:
+    - allow: 10.30.100.0/24
+      name: EVPN_iBGP
+interfaces:
+  interface:
+  - description: '*** to dc1-borderleaf1 ***'
+    name: xe-0/0/0
+  - description: '*** to dc1-borderleaf2 ***'
+    name: xe-0/0/1
+  - unit:
+    - name: '0'
+    description: '*** to dc1-leaf1 ***'
+    name: xe-0/0/2
+  - unit:
+    - name: '0'
+    name: xe-0/0/3
+    description: '*** to dc1-leaf2 ***'
+  - unit:
+    - name: '0'
+    name: xe-0/0/4
+    description: '*** to dc1-leaf3 ***'

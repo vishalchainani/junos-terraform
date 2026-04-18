@@ -1,0 +1,19 @@
+protocols:
+  bgp:
+    group:
+    - name: WAN_OVERLAY_eBGP
+      type: external
+      family:
+        evpn:
+          signaling: ''
+    _merge_directive: merge_recursive
+policy_options:
+  policy_statement:
+  - name: EVPN_T5_EXPORT
+    term:
+    - name: fm_direct
+      from:
+        protocol: direct
+      then:
+        accept: true
+_merge_directive: merge_recursive

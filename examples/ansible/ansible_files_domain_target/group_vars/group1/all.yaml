@@ -1,0 +1,17 @@
+protocols:
+  bgp:
+    group:
+    - name: EVPN_iBGP
+      type: internal
+      family:
+        evpn:
+          signaling: ''
+    _merge_directive: merge_recursive
+  evpn:
+    encapsulation: vxlan
+    multicast_mode: ingress-replication
+  _merge_directive: merge_recursive
+routing_options:
+  forwarding_table:
+    export: PFE-LB
+_merge_directive: merge_recursive

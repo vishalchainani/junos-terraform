@@ -1,0 +1,9 @@
+protocols:
+  bgp:
+    group:
+    - name: IPCLOS_eBGP
+      type: external
+      multipath:
+        multiple_as: true
+    _merge_directive: merge_recursive
+_merge_directive: merge_recursive
