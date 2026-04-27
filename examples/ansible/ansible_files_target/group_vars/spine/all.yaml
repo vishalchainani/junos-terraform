@@ -1,0 +1,17 @@
+interfaces:
+  interface:
+  - unit:
+    - family:
+        inet: {}
+      name: '0'
+    name: xe-0/0/2
+  - unit:
+    - family:
+        inet: {}
+      name: '0'
+    name: xe-0/0/3
+  - unit:
+    - family:
+        inet: {}
+      name: '0'
+    name: xe-0/0/4

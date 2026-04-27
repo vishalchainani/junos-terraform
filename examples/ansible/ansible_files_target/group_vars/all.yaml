@@ -1,0 +1,81 @@
+protocols:
+  lldp:
+    interface:
+    - name: all
+chassis:
+  aggregated_devices:
+    ethernet:
+      device_count: '24'
+routing_options:
+  static:
+    route:
+    - name: 0.0.0.0/0
+      next_hop: 100.123.0.1
+policy_options: {}
+interfaces:
+  _merge_directive: merge_recursive
+  _merge_list_directives:
+    interface:
+      _merge_directive: merge_by_key
+      _merge_key: name
+system:
+  services:
+    netconf:
+      ssh: ''
+    extension_service:
+      request_response:
+        grpc:
+          undocumented:
+            skip_authentication: null
+          max_connections: '30'
+      notification:
+        allow_clients:
+          address: 0.0.0.0/0
+    ssh:
+      root_login: allow
+    rest:
+      enable_explorer: true
+      http:
+        port: '3000'
+  root_authentication:
+    encrypted_password: $1$DbZ1Q3pj$s48cZytjsmSJRUJAf4LdM.
+  login:
+    message: '***********************************************************************\nThis
+      system is restricted to __________, authorized users for legitimate\nbusiness
+      purposes only. All activity on the system will be logged and\nis subject to
+      monitoring. Unauthorized access, use or modification\nof computers, data therein
+      or data in transit to or from the computers\nis a violation of state and federal
+      laws. Unauthorized activity will\nbe reported to the law enforcement for investigation
+      and possible\nprosecution. __________ reserves the right to investigate, refer
+      for\nprosecution and pursue monetary damages in civil actions in the event\nof
+      unauthorized access.\n***********************************************************************\n'
+    user:
+    - name: jcluser
+      uid: '2000'
+      class: super-user
+      authentication:
+        encrypted_password: $1$a31gJmWG$h9ohikT1ajySf/tVH.gmv1
+  syslog:
+    user:
+    - name: '*'
+      contents:
+      - name: any
+        emergency: true
+    file:
+    - contents:
+      - name: any
+      - info: true
+        name: authorization
+      name: messages
+    - contents:
+      - name: interactive-commands
+        any: true
+      name: interactive-commands
+  _merge_directive: merge_recursive
+snmp:
+  location: JCL Labs
+  contact: aburston@juniper.net
+  community:
+  - name: public
+    authorization: read-only
+_merge_directive: merge_recursive

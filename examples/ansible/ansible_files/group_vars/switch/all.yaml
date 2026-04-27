@@ -1,0 +1,29 @@
+policy_options:
+  policy_statement:
+  - term:
+    - name: loopback
+      then:
+        community:
+        - add: true
+    name: IPCLOS_BGP_EXP
+interfaces:
+  interface:
+  - unit:
+    - name: '0'
+    name: xe-0/0/0
+  - unit:
+    - name: '0'
+    name: xe-0/0/1
+  - name: xe-0/0/2
+  - unit:
+    - name: '0'
+    name: em0
+  - unit:
+    - name: '0'
+    name: lo0
+protocols:
+  bgp:
+    group:
+    - name: EVPN_iBGP
+    - name: IPCLOS_eBGP
+_merge_directive: merge_recursive

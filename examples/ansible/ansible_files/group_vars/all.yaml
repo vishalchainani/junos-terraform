@@ -1,22 +1,12 @@
-protocols:
-  lldp:
-    interface:
-    - name: all
-chassis:
-  aggregated_devices:
-    ethernet:
-      device_count: '24'
-routing_options:
-  static:
-    route:
-    - name: 0.0.0.0/0
-      next_hop: 100.123.0.1
-policy_options: {}
 interfaces: {}
+snmp:
+  community:
+  - name: public
+    authorization: read-only
+  contact: aburston@juniper.net
+  location: JCL Labs
 system:
   services:
-    netconf:
-      ssh: ''
     extension_service:
       request_response:
         grpc:
@@ -28,28 +18,12 @@ system:
           address: 0.0.0.0/0
     ssh:
       root_login: allow
+    netconf:
+      ssh: ''
     rest:
       enable_explorer: true
       http:
         port: '3000'
-  root_authentication:
-    encrypted_password: $1$DbZ1Q3pj$s48cZytjsmSJRUJAf4LdM.
-  login:
-    message: '***********************************************************************\nThis
-      system is restricted to __________, authorized users for legitimate\nbusiness
-      purposes only. All activity on the system will be logged and\nis subject to
-      monitoring. Unauthorized access, use or modification\nof computers, data therein
-      or data in transit to or from the computers\nis a violation of state and federal
-      laws. Unauthorized activity will\nbe reported to the law enforcement for investigation
-      and possible\nprosecution. __________ reserves the right to investigate, refer
-      for\nprosecution and pursue monetary damages in civil actions in the event\nof
-      unauthorized access.\n***********************************************************************\n'
-    user:
-    - name: jcluser
-      uid: '2000'
-      class: super-user
-      authentication:
-        encrypted_password: $1$a31gJmWG$h9ohikT1ajySf/tVH.gmv1
   syslog:
     user:
     - name: '*'
@@ -66,9 +40,532 @@ system:
       - name: interactive-commands
         any: true
       name: interactive-commands
-snmp:
-  location: JCL Labs
-  contact: aburston@juniper.net
-  community:
-  - name: public
-    authorization: read-only
+  root_authentication:
+    encrypted_password: $1$DbZ1Q3pj$s48cZytjsmSJRUJAf4LdM.
+  login:
+    user:
+    - name: jcluser
+      uid: '2000'
+      class: super-user
+      authentication:
+        encrypted_password: $1$a31gJmWG$h9ohikT1ajySf/tVH.gmv1
+    message: '***********************************************************************\nThis
+      system is restricted to __________, authorized users for legitimate\nbusiness
+      purposes only. All activity on the system will be logged and\nis subject to
+      monitoring. Unauthorized access, use or modification\nof computers, data therein
+      or data in transit to or from the computers\nis a violation of state and federal
+      laws. Unauthorized activity will\nbe reported to the law enforcement for investigation
+      and possible\nprosecution. __________ reserves the right to investigate, refer
+      for\nprosecution and pursue monetary damages in civil actions in the event\nof
+      unauthorized access.\n***********************************************************************\n'
+protocols:
+  lldp:
+    interface:
+    - name: all
+policy_options: {}
+chassis:
+  aggregated_devices:
+    ethernet:
+      device_count: '24'
+routing_options:
+  static:
+    route:
+    - name: 0.0.0.0/0
+      next_hop: 100.123.0.1
+meta:
+  jtaf_registry:
+    version: 1
+    providers:
+      vqfx-ansible-role_role:
+        managed_hosts:
+        - dc1-borderleaf1
+        - dc1-borderleaf2
+        - dc1-leaf1
+        - dc1-leaf2
+        - dc1-leaf3
+        - dc1-spine1
+        - dc1-spine2
+        group_names:
+        - borderleaf
+        - leaf
+        - spine
+        - switch
+        group_paths:
+          borderleaf: borderleaf
+          leaf: leaf
+          spine: spine
+          switch: switch
+        root_group: borderleaf
+        shared_payload:
+          policy_options:
+            policy_statement:
+            - name: IPCLOS_BGP_EXP
+              term:
+              - from:
+                  protocol: bgp
+                name: loopback
+                then:
+                  community:
+                  - add: true
+                  accept: true
+              - name: default
+                then:
+                  reject: true
+            - name: IPCLOS_BGP_IMP
+              term:
+              - name: loopback
+                from:
+                  protocol: direct
+                then:
+                  accept: true
+              - name: default
+                then:
+                  reject: true
+            - name: PFE-LB
+              then:
+                load_balance:
+                  per_packet: true
+          snmp:
+            community:
+            - name: public
+              authorization: read-only
+            location: JCL Labs
+            contact: aburston@juniper.net
+          forwarding_options:
+            storm_control_profiles:
+            - name: default
+              all: ''
+          protocols:
+            igmp_snooping:
+              vlan:
+              - name: default
+            bgp:
+              group:
+              - name: EVPN_iBGP
+                multipath: ''
+                local_as:
+                  as_number: '65200'
+                type: internal
+                family:
+                  evpn:
+                    signaling: ''
+              - import: IPCLOS_BGP_IMP
+                bfd_liveness_detection:
+                  minimum_interval: '1000'
+                  multiplier: '3'
+                vpn_apply_export: true
+                name: IPCLOS_eBGP
+                export: IPCLOS_BGP_EXP
+                multipath:
+                  multiple_as: true
+                local_as: {}
+                mtu_discovery: true
+                type: external
+            lldp:
+              interface:
+              - name: all
+          routing_options:
+            forwarding_table:
+              export: PFE-LB
+              ecmp_fast_reroute: true
+            static:
+              route:
+              - name: 0.0.0.0/0
+                next_hop: 100.123.0.1
+          chassis:
+            aggregated_devices:
+              ethernet:
+                device_count: '24'
+          system:
+            syslog:
+              user:
+              - name: '*'
+                contents:
+                - name: any
+                  emergency: true
+              file:
+              - name: messages
+                contents:
+                - name: any
+                  notice: true
+                - name: authorization
+                  info: true
+              - name: interactive-commands
+                contents:
+                - name: interactive-commands
+                  any: true
+            login:
+              user:
+              - name: jcluser
+                uid: '2000'
+                class: super-user
+                authentication:
+                  encrypted_password: $1$a31gJmWG$h9ohikT1ajySf/tVH.gmv1
+              message: '***********************************************************************\nThis
+                system is restricted to __________, authorized users for legitimate\nbusiness
+                purposes only. All activity on the system will be logged and\nis subject
+                to monitoring. Unauthorized access, use or modification\nof computers,
+                data therein or data in transit to or from the computers\nis a violation
+                of state and federal laws. Unauthorized activity will\nbe reported
+                to the law enforcement for investigation and possible\nprosecution.
+                __________ reserves the right to investigate, refer for\nprosecution
+                and pursue monetary damages in civil actions in the event\nof unauthorized
+                access.\n***********************************************************************\n'
+            root_authentication:
+              encrypted_password: $1$DbZ1Q3pj$s48cZytjsmSJRUJAf4LdM.
+            extensions:
+              providers:
+              - name: juniper
+                license_type:
+                - name: juniper
+                  deployment_scope: commercial
+              - name: chef
+                license_type:
+                - name: juniper
+                  deployment_scope: commercial
+            services:
+              rest:
+                enable_explorer: true
+                http:
+                  port: '3000'
+              ssh:
+                root_login: allow
+              netconf:
+                ssh: ''
+              extension_service:
+                notification:
+                  allow_clients:
+                    address: 0.0.0.0/0
+                request_response:
+                  grpc:
+                    max_connections: '30'
+                    undocumented:
+                      skip_authentication: null
+          interfaces:
+            interface:
+            - unit:
+              - name: '0'
+                family:
+                  inet: {}
+              name: xe-0/0/0
+            - unit:
+              - name: '0'
+                family:
+                  inet: {}
+              name: xe-0/0/1
+            - name: xe-0/0/2
+            - unit:
+              - description: '*** management ***'
+                name: '0'
+                family:
+                  inet: {}
+              name: em0
+            - unit:
+              - name: '0'
+                description: '*** to pfe ***'
+                family:
+                  inet:
+                    address:
+                    - name: 169.254.0.2/24
+              name: em1
+            - unit:
+              - description: '*** loopback ***'
+                name: '0'
+                family:
+                  inet: {}
+              name: lo0
+          version: 18.1R3-S5.3
+      srx-ansible-role_role:
+        managed_hosts:
+        - dc1-firewall1
+        - dc1-firewall2
+        shared_payload:
+          interfaces:
+            interface:
+            - vlan_tagging: true
+              unit:
+              - family:
+                  inet: {}
+                description: '*** to dc1-borderleaf1 vlan 1 ***'
+                name: '1'
+                vlan_id: '1'
+              - family:
+                  inet: {}
+                description: '*** to dc1-borderleaf1 vlan 2 ***'
+                name: '2'
+                vlan_id: '2'
+              - family:
+                  inet: {}
+                description: '*** to dc1-borderleaf1 vlan 3 ***'
+                name: '3'
+                vlan_id: '3'
+              name: ge-0/0/0
+            - vlan_tagging: true
+              unit:
+              - family:
+                  inet: {}
+                description: '*** to dc1-borderleaf2 vlan 1 ***'
+                name: '1'
+                vlan_id: '1'
+              - family:
+                  inet: {}
+                description: '*** to dc1-borderleaf2 vlan 2 ***'
+                name: '2'
+                vlan_id: '2'
+              - family:
+                  inet: {}
+                description: '*** to dc1-borderleaf2 vlan 3 ***'
+                name: '3'
+                vlan_id: '3'
+              name: ge-0/0/1
+            - unit:
+              - family:
+                  inet: {}
+                description: '*** management ***'
+                name: '0'
+              name: fxp0
+          snmp:
+            community:
+            - name: public
+              authorization: read-only
+            contact: aburston@juniper.net
+            location: JCL Labs
+          routing_instances:
+            instance:
+            - name: fabric
+              instance_type: virtual-router
+              interface:
+              - name: ge-0/0/0.1
+              - name: ge-0/0/0.2
+              - name: ge-0/0/0.3
+              - name: ge-0/0/1.1
+              - name: ge-0/0/1.2
+              - name: ge-0/0/1.3
+              routing_options:
+                static:
+                  route:
+                  - name: 0.0.0.0/0
+                    discard: true
+              protocols:
+                ospf:
+                  export: ospf-default
+                  area:
+                  - name: 0.0.0.0
+                    interface:
+                    - name: ge-0/0/0.1
+                    - name: ge-0/0/1.1
+                    - name: ge-0/0/0.2
+                    - name: ge-0/0/1.2
+                    - name: ge-0/0/0.3
+                    - name: ge-0/0/1.3
+          system:
+            license:
+              autoupdate:
+                url:
+                - name: https://ae1.juniper.net/junos/key_retrieval
+            syslog:
+              user:
+              - name: '*'
+                contents:
+                - name: any
+                  emergency: true
+              file:
+              - name: messages
+                contents:
+                - name: any
+                  any: true
+                - name: authorization
+                  info: true
+              - name: interactive-commands
+                contents:
+                - name: interactive-commands
+                  any: true
+            services:
+              extension_service:
+                notification:
+                  allow_clients:
+                    address: 0.0.0.0/0
+                request_response:
+                  grpc:
+                    undocumented:
+                      skip_authentication: null
+                    max_connections: '30'
+              ssh:
+                root_login: allow
+              netconf:
+                ssh: ''
+              rest:
+                enable_explorer: true
+                http:
+                  port: '3000'
+            login:
+              user:
+              - name: jcluser
+                uid: '2000'
+                class: super-user
+                authentication:
+                  encrypted_password: $1$a31gJmWG$h9ohikT1ajySf/tVH.gmv1
+              message: '***********************************************************************\nThis
+                system is restricted to __________, authorized users for legitimate\nbusiness
+                purposes only. All activity on the system will be logged and\nis subject
+                to monitoring. Unauthorized access, use or modification\nof computers,
+                data therein or data in transit to or from the computers\nis a violation
+                of state and federal laws. Unauthorized activity will\nbe reported
+                to the law enforcement for investigation and possible\nprosecution.
+                __________ reserves the right to investigate, refer for\nprosecution
+                and pursue monetary damages in civil actions in the event\nof unauthorized
+                access.\n***********************************************************************\n'
+            root_authentication:
+              encrypted_password: $1$DbZ1Q3pj$s48cZytjsmSJRUJAf4LdM.
+          protocols:
+            lldp:
+              interface:
+              - name: all
+          policy_options:
+            policy_statement:
+            - name: ospf-default
+              term:
+              - name: '1'
+                from:
+                  route_filter:
+                  - address: 0.0.0.0/0
+                    exact: true
+                    accept: true
+          security:
+            screen:
+              ids_option:
+              - name: untrust-screen
+                icmp:
+                  ping_death: true
+                ip:
+                  source_route_option: true
+                  tear_drop: true
+                tcp:
+                  syn_flood:
+                    alarm_threshold: '1024'
+                    attack_threshold: '200'
+                    source_threshold: '1024'
+                    destination_threshold: '2048'
+                    undocumented:
+                      queue_size: '2000'
+                    timeout: '20'
+                  land: true
+            policies:
+              policy:
+              - from_zone_name: trust
+                to_zone_name: trust
+                policy:
+                - name: default-permit
+                  match:
+                    source_address: any
+                    destination_address: any
+                    application: any
+                  then:
+                    permit: ''
+              - from_zone_name: trust
+                to_zone_name: untrust
+                policy:
+                - name: default-permit
+                  match:
+                    source_address: any
+                    destination_address: any
+                    application: any
+                  then:
+                    permit: ''
+              - from_zone_name: VRF_10001
+                to_zone_name: VRF_10002
+                policy:
+                - name: default-permit
+                  match:
+                    source_address: any
+                    destination_address: any
+                    application: any
+                  then:
+                    permit: ''
+              - from_zone_name: VRF_10002
+                to_zone_name: VRF_10001
+                policy:
+                - name: default-permit
+                  match:
+                    source_address: any
+                    destination_address: any
+                    application: any
+                  then:
+                    permit: ''
+              - from_zone_name: VRF_10002
+                to_zone_name: VRF_10003
+                policy:
+                - name: default-permit
+                  match:
+                    source_address: any
+                    destination_address: any
+                    application: any
+                  then:
+                    permit: ''
+              - from_zone_name: VRF_10003
+                to_zone_name: VRF_10002
+                policy:
+                - name: default-permit
+                  match:
+                    source_address: any
+                    destination_address: any
+                    application: any
+                  then:
+                    permit: ''
+            log:
+              report: ''
+              mode: stream
+            zones:
+              security_zone:
+              - name: trust
+                tcp_rst: true
+                host_inbound_traffic:
+                  system_services:
+                  - name: all
+                  protocols:
+                  - name: all
+              - name: untrust
+                screen: untrust-screen
+              - name: VRF_10001
+                host_inbound_traffic:
+                  system_services:
+                  - name: all
+                  protocols:
+                  - name: all
+                interfaces:
+                - name: ge-0/0/0.1
+                - name: ge-0/0/1.1
+              - name: VRF_10002
+                host_inbound_traffic:
+                  system_services:
+                  - name: all
+                  protocols:
+                  - name: all
+                interfaces:
+                - name: ge-0/0/0.2
+                - name: ge-0/0/1.2
+              - name: VRF_10003
+                host_inbound_traffic:
+                  system_services:
+                  - name: all
+                  protocols:
+                  - name: all
+                interfaces:
+                - name: ge-0/0/0.3
+                - name: ge-0/0/1.3
+          chassis:
+            aggregated_devices:
+              ethernet:
+                device_count: '24'
+          version: 18.2R3.4
+          routing_options:
+            static:
+              route:
+              - name: 0.0.0.0/0
+                next_hop: 100.123.0.1
+        group_range: {}
+        group_names:
+        - firewall
+        group_paths:
+          firewall: firewall
+        root_group: firewall

@@ -1,0 +1,186 @@
+policy_options:
+  policy_statement:
+  - name: EVPN_T5_EXPORT
+    term:
+    - name: fm_direct
+      from:
+        protocol: direct
+      then:
+        accept: true
+    - name: fm_static
+      from:
+        protocol: static
+      then:
+        accept: true
+    - name: fm_v4_host
+      from:
+        protocol: evpn
+        route_filter:
+        - address: 0.0.0.0/0
+          prefix_length_range: /32-/32
+      then:
+        accept: true
+    - name: fm_v6_host
+      from:
+        protocol: evpn
+        route_filter:
+        - address: 0::0/0
+          prefix_length_range: /128-/128
+      then:
+        accept: true
+  - term:
+    - name: loopback
+      then:
+        community:
+        - add: true
+    name: IPCLOS_BGP_EXP
+switch_options:
+  vrf_target:
+    community: target:9999:9999
+    auto: ''
+  vtep_source_interface:
+    interface_name: lo0.0
+vlans:
+  vlan:
+  - name: vlan_1001
+    vlan_id: '1001'
+    l3_interface: irb.1001
+    vxlan:
+      vni: '1001'
+  - name: vlan_2001
+    vlan_id: '2001'
+    l3_interface: irb.2001
+    vxlan:
+      vni: '2001'
+  - name: vlan_3001
+    vlan_id: '3001'
+    l3_interface: irb.3001
+    vxlan:
+      vni: '3001'
+routing_options:
+  forwarding_table:
+    chained_composite_next_hop:
+      ingress:
+        evpn: true
+routing_instances:
+  instance:
+  - interface:
+    - name: irb.1001
+    - name: lo0.10001
+    name: VRF_10001
+    vrf_table_label: ''
+    instance_type: vrf
+    vrf_target:
+      community: target:1:10001
+    routing_options:
+      auto_export: ''
+    protocols:
+      evpn:
+        ip_prefix_routes:
+          export: EVPN_T5_EXPORT
+          advertise: direct-nexthop
+          vni: '10001'
+          encapsulation: vxlan
+  - interface:
+    - name: irb.2001
+    - name: lo0.10002
+    name: VRF_10002
+    vrf_table_label: ''
+    instance_type: vrf
+    vrf_target:
+      community: target:1:10002
+    routing_options:
+      auto_export: ''
+    protocols:
+      evpn:
+        ip_prefix_routes:
+          export: EVPN_T5_EXPORT
+          advertise: direct-nexthop
+          vni: '10002'
+          encapsulation: vxlan
+  - interface:
+    - name: irb.3001
+    - name: lo0.10003
+    name: VRF_10003
+    vrf_table_label: ''
+    instance_type: vrf
+    vrf_target:
+      community: target:1:10003
+    routing_options:
+      auto_export: ''
+    protocols:
+      evpn:
+        ip_prefix_routes:
+          export: EVPN_T5_EXPORT
+          advertise: direct-nexthop
+          vni: '10003'
+          encapsulation: vxlan
+interfaces:
+  interface:
+  - description: '*** to dc1-spine1 ***'
+    unit:
+    - name: '0'
+    name: xe-0/0/0
+  - description: '*** to dc1-spine2 ***'
+    unit:
+    - name: '0'
+    name: xe-0/0/1
+  - ether_options:
+      ieee_802_3ad:
+        bundle: ae0
+    name: xe-0/0/2
+  - unit:
+    - name: '0'
+    name: ae0
+    aggregated_ether_options:
+      lacp:
+        active: true
+        periodic: fast
+    esi:
+      all_active: true
+  - unit:
+    - name: '0'
+    name: em0
+  - unit:
+    - name: '1001'
+      family:
+        inet:
+          address:
+          - name: 10.1.1.1/24
+      mac: 02:0a:01:01:01:18
+    - name: '2001'
+      family:
+        inet:
+          address:
+          - name: 10.2.1.1/24
+      mac: 02:0a:02:01:01:18
+    - name: '3001'
+      family:
+        inet:
+          address:
+          - name: 10.3.1.1/24
+      mac: 02:0a:03:01:01:18
+    name: irb
+  - unit:
+    - name: '0'
+    - description: Loopback for VXLAN control packets for VRF_10001
+      name: '10001'
+    - description: Loopback for VXLAN control packets for VRF_10002
+      name: '10002'
+    - description: Loopback for VXLAN control packets for VRF_10003
+      name: '10003'
+    name: lo0
+protocols:
+  bgp:
+    group:
+    - name: EVPN_iBGP
+      neighbor:
+      - name: 10.30.100.3
+      - name: 10.30.100.4
+    - name: IPCLOS_eBGP
+  evpn:
+    multicast_mode: ingress-replication
+    extended_vni_list: all
+    default_gateway: do-not-advertise
+    encapsulation: vxlan
+_merge_directive: merge_recursive

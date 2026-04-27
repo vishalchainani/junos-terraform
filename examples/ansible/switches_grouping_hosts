@@ -1,8 +1,15 @@
 [all]
 dc1-borderleaf1
 dc1-borderleaf2
-dc1-firewall1
-dc1-firewall2
+dc1-leaf1
+dc1-leaf2
+dc1-leaf3
+dc1-spine1
+dc1-spine2
+
+[switch]
+dc1-borderleaf1
+dc1-borderleaf2
 dc1-leaf1
 dc1-leaf2
 dc1-leaf3
@@ -13,24 +20,11 @@ dc1-spine2
 dc1-borderleaf1
 dc1-borderleaf2
 
-[firewall]
-dc1-firewall1
-dc1-firewall2
-
 [leaf]
 dc1-leaf1
 dc1-leaf2
 dc1-leaf3
 
 [spine]
-dc1-spine1
-dc1-spine2
-
-[switch]
-dc1-borderleaf1
-dc1-borderleaf2
-dc1-leaf1
-dc1-leaf2
-dc1-leaf3
 dc1-spine1
 dc1-spine2

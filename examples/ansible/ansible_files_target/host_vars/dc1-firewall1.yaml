@@ -1,20 +1,5 @@
 system:
   host_name: dc1-firewall1
-  syslog:
-    file:
-    - contents:
-      - name: authorization
-        info: true
-      name: messages
-    - name: interactive-commands
-      contents:
-      - name: interactive-commands
-        any: true
-    _merge_list_directives:
-      file:
-        _merge_directive: merge_by_key
-        _merge_key: name
-    _merge_directive: merge_recursive
   _merge_directive: merge_recursive
 interfaces:
   interface:

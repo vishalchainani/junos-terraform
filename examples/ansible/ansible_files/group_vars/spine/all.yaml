@@ -1,0 +1,43 @@
+policy_options:
+  policy_statement:
+  - term:
+    - name: loopback
+      then:
+        community:
+        - add: true
+    name: IPCLOS_BGP_EXP
+interfaces:
+  interface:
+  - description: '*** to dc1-borderleaf1 ***'
+    unit:
+    - name: '0'
+    name: xe-0/0/0
+  - description: '*** to dc1-borderleaf2 ***'
+    unit:
+    - name: '0'
+    name: xe-0/0/1
+  - description: '*** to dc1-leaf1 ***'
+    unit:
+    - name: '0'
+    name: xe-0/0/2
+  - description: '*** to dc1-leaf2 ***'
+    unit:
+    - name: '0'
+    name: xe-0/0/3
+  - description: '*** to dc1-leaf3 ***'
+    unit:
+    - name: '0'
+    name: xe-0/0/4
+  - unit:
+    - name: '0'
+    name: em0
+  - unit:
+    - name: '0'
+    name: lo0
+protocols:
+  bgp:
+    group:
+    - allow: 10.30.100.0/24
+      name: EVPN_iBGP
+    - name: IPCLOS_eBGP
+_merge_directive: merge_recursive

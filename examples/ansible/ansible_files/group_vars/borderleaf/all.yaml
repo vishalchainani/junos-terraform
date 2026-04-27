@@ -1,0 +1,115 @@
+policy_options:
+  policy_statement:
+  - name: IPCLOS_BGP_EXP
+    term:
+    - from:
+        protocol: bgp
+      name: loopback
+      then:
+        community:
+        - add: true
+        accept: true
+    - name: default
+      then:
+        reject: true
+  - name: IPCLOS_BGP_IMP
+    term:
+    - name: loopback
+      from:
+        protocol: direct
+      then:
+        accept: true
+    - name: default
+      then:
+        reject: true
+  - name: PFE-LB
+    then:
+      load_balance:
+        per_packet: true
+  _merge_directive: merge_recursive
+forwarding_options:
+  storm_control_profiles:
+  - name: default
+    all: ''
+protocols:
+  igmp_snooping:
+    vlan:
+    - name: default
+  bgp:
+    group:
+    - name: EVPN_iBGP
+      multipath: ''
+      local_as:
+        as_number: '65200'
+      type: internal
+      family:
+        evpn:
+          signaling: ''
+    - import: IPCLOS_BGP_IMP
+      bfd_liveness_detection:
+        minimum_interval: '1000'
+        multiplier: '3'
+      vpn_apply_export: true
+      name: IPCLOS_eBGP
+      export: IPCLOS_BGP_EXP
+      multipath:
+        multiple_as: true
+      mtu_discovery: true
+      type: external
+  _merge_directive: merge_recursive
+routing_options:
+  forwarding_table:
+    export: PFE-LB
+    ecmp_fast_reroute: true
+  _merge_directive: merge_recursive
+system:
+  syslog:
+    file:
+    - contents:
+      - notice: true
+        name: any
+      name: messages
+    _merge_list_directives:
+      file:
+        _merge_directive: merge_by_key
+        _merge_key: name
+    _merge_directive: merge_recursive
+  extensions:
+    providers:
+    - name: juniper
+      license_type:
+      - name: juniper
+        deployment_scope: commercial
+    - name: chef
+      license_type:
+      - name: juniper
+        deployment_scope: commercial
+  _merge_directive: merge_recursive
+interfaces:
+  interface:
+  - unit:
+    - name: '0'
+    name: xe-0/0/0
+  - unit:
+    - name: '0'
+    name: xe-0/0/1
+  - name: xe-0/0/2
+  - unit:
+    - description: '*** management ***'
+      name: '0'
+    name: em0
+  - unit:
+    - name: '0'
+      description: '*** to pfe ***'
+      family:
+        inet:
+          address:
+          - name: 169.254.0.2/24
+    name: em1
+  - unit:
+    - description: '*** loopback ***'
+      name: '0'
+    name: lo0
+  _merge_directive: merge_recursive
+version: 18.1R3-S5.3
+_merge_directive: merge_recursive

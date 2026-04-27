@@ -1,0 +1,61 @@
+interfaces:
+  interface:
+  - unit:
+    - family:
+        inet: {}
+      name: '1'
+    - family:
+        inet: {}
+      name: '2'
+    - family:
+        inet: {}
+      name: '3'
+    name: xe-0/0/2
+  - unit:
+    - family:
+        inet: {}
+      name: '1'
+    - family:
+        inet: {}
+      name: '2'
+    - family:
+        inet: {}
+      name: '3'
+    name: xe-0/0/3
+  - unit:
+    - family:
+        inet: {}
+      name: '0'
+    name: xe-0/0/4
+  - unit:
+    - family:
+        inet: {}
+      name: '10001'
+    - family:
+        inet: {}
+      name: '10002'
+    - family:
+        inet: {}
+      name: '10003'
+    name: lo0
+switch_options:
+  _merge_directive: merge_recursive
+  route_distinguisher:
+    _merge_directive: merge_recursive
+protocols:
+  bgp:
+    group:
+    - name: WAN_OVERLAY_eBGP
+routing_instances:
+  _merge_directive: merge_recursive
+  _merge_list_directives:
+    instance:
+      _merge_directive: merge_by_key
+      _merge_key: name
+  instance:
+  - route_distinguisher: {}
+    name: VRF_10001
+  - route_distinguisher: {}
+    name: VRF_10002
+  - route_distinguisher: {}
+    name: VRF_10003

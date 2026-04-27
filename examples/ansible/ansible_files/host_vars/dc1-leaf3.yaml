@@ -1,96 +1,152 @@
+system:
+  host_name: dc1-leaf3
+  _merge_directive: merge_recursive
 interfaces:
   interface:
-  - unit:
+  - description: '*** to dc1-spine1 ***'
+    unit:
     - family:
         inet:
           address:
           - name: 10.30.137.2/30
       name: '0'
     name: xe-0/0/0
-  - unit:
+  - description: '*** to dc1-spine2 ***'
+    unit:
     - family:
         inet:
           address:
           - name: 10.30.147.2/30
       name: '0'
     name: xe-0/0/1
-  - aggregated_ether_options:
-      lacp:
-        system_id: 00:00:00:00:03:00
+  - ether_options:
+      ieee_802_3ad:
+        bundle: ae0
+    name: xe-0/0/2
+  - name: ae0
     esi:
       identifier: 00:00:00:00:00:00:00:00:03:00
+      all_active: true
+    aggregated_ether_options:
+      lacp:
+        active: true
+        periodic: fast
+        system_id: 00:00:00:00:03:00
     unit:
-    - family:
+    - name: '0'
+      family:
         ethernet_switching:
           vlan:
             members: '3001'
-      name: '0'
-    name: ae0
   - unit:
-    - family:
+    - description: '*** management ***'
+      family:
         inet:
           address:
           - name: 100.123.24.7/16
       name: '0'
     name: em0
+  - name: em1
+    unit:
+    - name: '0'
+      description: '*** to pfe ***'
+      family:
+        inet:
+          address:
+          - name: 169.254.0.2/24
+  - name: irb
+    unit:
+    - name: '1001'
+      family:
+        inet:
+          address:
+          - name: 10.1.1.1/24
+      mac: 02:0a:01:01:01:18
+    - name: '2001'
+      family:
+        inet:
+          address:
+          - name: 10.2.1.1/24
+      mac: 02:0a:02:01:01:18
+    - name: '3001'
+      family:
+        inet:
+          address:
+          - name: 10.3.1.1/24
+      mac: 02:0a:03:01:01:18
   - unit:
-    - family:
+    - description: '*** loopback ***'
+      family:
         inet:
           address:
           - name: 10.30.100.7/32
       name: '0'
-    - family:
+    - name: '10001'
+      description: Loopback for VXLAN control packets for VRF_10001
+      family:
         inet:
           address:
           - name: 10.40.100.5/32
-      name: '10001'
-    - family:
+    - name: '10002'
+      description: Loopback for VXLAN control packets for VRF_10002
+      family:
         inet:
           address:
           - name: 10.40.100.10/32
-      name: '10002'
-    - family:
+    - name: '10003'
+      description: Loopback for VXLAN control packets for VRF_10003
+      family:
         inet:
           address:
           - name: 10.40.100.15/32
-      name: '10003'
     name: lo0
   _merge_list_directives:
     interface:
       _merge_directive: merge_by_key
       _merge_key: name
   _merge_directive: merge_recursive
-policy_options:
-  community:
-  - members: '65505:1'
-    name: dc1-leaf3
-  policy_statement:
-  - term:
-    - then:
-        community:
-        - community_name: dc1-leaf3
-          add: true
-      name: loopback
-    name: IPCLOS_BGP_EXP
-  _merge_list_directives:
-    policy_statement:
-      _merge_directive: merge_by_key
-      _merge_key: name
+routing_options:
+  router_id: 10.30.100.7
+  forwarding_table:
+    chained_composite_next_hop:
+      ingress:
+        evpn: true
+    _merge_directive: merge_recursive
   _merge_directive: merge_recursive
 protocols:
   bgp:
     group:
-    - cluster: 10.30.100.7
+    - type: internal
       local_address: 10.30.100.7
-      name: EVPN_iBGP
-    - local_as:
-        as_number: '65505'
+      family:
+        evpn:
+          signaling: ''
+      cluster: 10.30.100.7
+      local_as:
+        as_number: '65200'
+      multipath: ''
       neighbor:
-      - description: EBGP peering to 10.30.137.1
-        name: 10.30.137.1
+      - name: 10.30.100.3
+      - name: 10.30.100.4
+      name: EVPN_iBGP
+    - type: external
+      mtu_discovery: true
+      import: IPCLOS_BGP_IMP
+      export: IPCLOS_BGP_EXP
+      vpn_apply_export: true
+      local_as:
+        as_number: '65505'
+      multipath:
+        multiple_as: true
+      bfd_liveness_detection:
+        minimum_interval: '1000'
+        multiplier: '3'
+      neighbor:
+      - name: 10.30.137.1
+        description: EBGP peering to 10.30.137.1
         peer_as: '65501'
-      - description: EBGP peering to 10.30.147.1
-        name: 10.30.147.1
+      - name: 10.30.147.1
+        description: EBGP peering to 10.30.147.1
         peer_as: '65502'
       name: IPCLOS_eBGP
     _merge_list_directives:
@@ -98,32 +154,159 @@ protocols:
         _merge_directive: merge_by_key
         _merge_key: name
     _merge_directive: merge_recursive
+  evpn:
+    encapsulation: vxlan
+    multicast_mode: ingress-replication
+    default_gateway: do-not-advertise
+    extended_vni_list: all
   _merge_directive: merge_recursive
-routing_instances:
-  instance:
-  - route_distinguisher:
-      rd_type: 10.40.100.5:10001
-    name: VRF_10001
-  - route_distinguisher:
-      rd_type: 10.40.100.10:10002
-    name: VRF_10002
-  - route_distinguisher:
-      rd_type: 10.40.100.15:10003
-    name: VRF_10003
+policy_options:
+  policy_statement:
+  - name: EVPN_T5_EXPORT
+    term:
+    - name: fm_direct
+      from:
+        protocol: direct
+      then:
+        accept: true
+    - name: fm_static
+      from:
+        protocol: static
+      then:
+        accept: true
+    - name: fm_v4_host
+      from:
+        protocol: evpn
+        route_filter:
+        - address: 0.0.0.0/0
+          prefix_length_range: /32-/32
+      then:
+        accept: true
+    - name: fm_v6_host
+      from:
+        protocol: evpn
+        route_filter:
+        - address: 0::0/0
+          prefix_length_range: /128-/128
+      then:
+        accept: true
+  - term:
+    - from:
+        protocol: bgp
+      then:
+        community:
+        - community_name: dc1-leaf3
+          add: true
+        accept: true
+      name: loopback
+    - name: default
+      then:
+        reject: true
+    name: IPCLOS_BGP_EXP
+  - name: IPCLOS_BGP_IMP
+    term:
+    - name: loopback
+      from:
+        protocol: direct
+      then:
+        accept: true
+    - name: default
+      then:
+        reject: true
+  - name: PFE-LB
+    then:
+      load_balance:
+        per_packet: true
+  community:
+  - name: dc1-leaf3
+    members: '65505:1'
   _merge_list_directives:
-    instance:
+    policy_statement:
       _merge_directive: merge_by_key
       _merge_key: name
   _merge_directive: merge_recursive
-routing_options:
-  router_id: 10.30.100.7
-  _merge_directive: merge_recursive
+routing_instances:
+  instance:
+  - name: VRF_10001
+    instance_type: vrf
+    interface:
+    - name: irb.1001
+    - name: lo0.10001
+    route_distinguisher:
+      rd_type: 10.40.100.5:10001
+    vrf_target:
+      community: target:1:10001
+    vrf_table_label: ''
+    routing_options:
+      auto_export: ''
+    protocols:
+      evpn:
+        ip_prefix_routes:
+          advertise: direct-nexthop
+          encapsulation: vxlan
+          vni: '10001'
+          export: EVPN_T5_EXPORT
+  - name: VRF_10002
+    instance_type: vrf
+    interface:
+    - name: irb.2001
+    - name: lo0.10002
+    route_distinguisher:
+      rd_type: 10.40.100.10:10002
+    vrf_target:
+      community: target:1:10002
+    vrf_table_label: ''
+    routing_options:
+      auto_export: ''
+    protocols:
+      evpn:
+        ip_prefix_routes:
+          advertise: direct-nexthop
+          encapsulation: vxlan
+          vni: '10002'
+          export: EVPN_T5_EXPORT
+  - name: VRF_10003
+    instance_type: vrf
+    interface:
+    - name: irb.3001
+    - name: lo0.10003
+    route_distinguisher:
+      rd_type: 10.40.100.15:10003
+    vrf_target:
+      community: target:1:10003
+    vrf_table_label: ''
+    routing_options:
+      auto_export: ''
+    protocols:
+      evpn:
+        ip_prefix_routes:
+          advertise: direct-nexthop
+          encapsulation: vxlan
+          vni: '10003'
+          export: EVPN_T5_EXPORT
 switch_options:
+  vtep_source_interface:
+    interface_name: lo0.0
   route_distinguisher:
     rd_type: 10.30.100.7:9999
-    _merge_directive: merge_recursive
-  _merge_directive: merge_recursive
-system:
-  host_name: dc1-leaf3
-  _merge_directive: merge_recursive
+  vrf_target:
+    community: target:9999:9999
+    auto: ''
+vlans:
+  vlan:
+  - name: vlan_1001
+    vlan_id: '1001'
+    l3_interface: irb.1001
+    vxlan:
+      vni: '1001'
+  - name: vlan_2001
+    vlan_id: '2001'
+    l3_interface: irb.2001
+    vxlan:
+      vni: '2001'
+  - name: vlan_3001
+    vlan_id: '3001'
+    l3_interface: irb.3001
+    vxlan:
+      vni: '3001'
 _merge_directive: merge_recursive

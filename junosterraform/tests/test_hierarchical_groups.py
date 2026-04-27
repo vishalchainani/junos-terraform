@@ -1,8 +1,8 @@
 import importlib.util
-from importlib.machinery import SourceFileLoader
 import json
 import pathlib
 import sys
+from importlib.machinery import SourceFileLoader
 
 import pytest
 import yaml
@@ -31,429 +31,347 @@ def ansible_mod():
     return _load_script_module("jtaf-ansible", "jtaf_ansible_mod")
 
 
-def test_detect_device_type(xml2yaml_mod):
+def _basic_schema() -> dict:
+    return {
+        "root": {
+            "name": "root",
+            "children": [
+                {
+                    "name": "configuration",
+                    "children": [
+                        {
+                            "name": "system",
+                            "type": "container",
+                            "children": [
+                                {"name": "host-name", "type": "leaf"},
+                                {"name": "product-name", "type": "leaf"},
+                                {"name": "profile", "type": "leaf"},
+                                {
+                                    "name": "services",
+                                    "type": "container",
+                                    "children": [{"name": "ssh", "type": "leaf"}],
+                                },
+                            ],
+                        },
+                        {
+                            "name": "routing-options",
+                            "type": "container",
+                            "children": [{"name": "router-id", "type": "leaf"}],
+                        },
+                        {
+                            "name": "vlans",
+                            "type": "container",
+                            "children": [{"name": "enabled", "type": "leaf"}],
+                        },
+                        {
+                            "name": "security",
+                            "type": "container",
+                            "children": [{"name": "policies", "type": "leaf"}],
+                        },
+                    ],
+                }
+            ],
+        }
+    }
+
+
+def _write_provider(tmp_path: pathlib.Path, provider_dir_name: str, role_name: str) -> pathlib.Path:
+    provider_dir = tmp_path / provider_dir_name
+    (provider_dir / "roles" / role_name).mkdir(parents=True, exist_ok=True)
+    schema_file = provider_dir / "trimmed_schema.json"
+    schema_file.write_text(json.dumps(_basic_schema()))
+    return schema_file
+
+
+def _write_xml(
+    xml_file: pathlib.Path,
+    *,
+    host_name: str,
+    product_name: str,
+    profile: str,
+    router_id: str | None = None,
+    vlan_enabled: str | None = None,
+    security_policies: str | None = None,
+) -> None:
+    parts = [
+        "<configuration>",
+        "<system>",
+        f"<host-name>{host_name}</host-name>",
+        f"<product-name>{product_name}</product-name>",
+        f"<profile>{profile}</profile>",
+        "<services><ssh/></services>",
+        "</system>",
+    ]
+    if router_id is not None:
+        parts.extend([
+            "<routing-options>",
+            f"<router-id>{router_id}</router-id>",
+            "</routing-options>",
+        ])
+    if vlan_enabled is not None:
+        parts.extend([
+            "<vlans>",
+            f"<enabled>{vlan_enabled}</enabled>",
+            "</vlans>",
+        ])
+    if security_policies is not None:
+        parts.extend([
+            "<security>",
+            f"<policies>{security_policies}</policies>",
+            "</security>",
+        ])
+    parts.append("</configuration>")
+    xml_file.write_text("".join(parts))
+
+
+def test_prepare_and_detect_device_type(xml2yaml_mod):
+    assert xml2yaml_mod.prepare_tag("host-name.v4") == "host_name_v4"
     assert xml2yaml_mod.detect_device_type({"system": {"product_name": "QFX5110"}}) == "qfx"
     assert xml2yaml_mod.detect_device_type({"chassis": {"product_name": "SRX300"}}) == "srx"
     assert xml2yaml_mod.detect_device_type({"system": {"product_name": "Unknown"}}) is None
 
 
-def test_prepare_and_intersection_helpers(xml2yaml_mod):
-    assert xml2yaml_mod.prepare_tag("host-name.v4") == "host_name_v4"
+def test_keyed_list_intersection_and_subtraction(xml2yaml_mod):
+    left = {
+        "policy_options": {
+            "policy_statement": [
+                {"name": "A", "term": 1, "action": "accept"},
+                {"name": "B", "term": 2, "action": "reject"},
+            ]
+        }
+    }
+    right = {
+        "policy_options": {
+            "policy_statement": [
+                {"name": "A", "term": 1, "action": "accept", "comment": "preserved"},
+                {"name": "C", "term": 3, "action": "accept"},
+            ]
+        }
+    }
 
-    shared = xml2yaml_mod.build_shared_payload([
-        {"system": {"services": {"ssh": True}, "domain": "a"}},
-        {"system": {"services": {"ssh": True}, "domain": "b"}},
-    ])
-    assert shared == {"system": {"services": {"ssh": True}}}
+    shared = xml2yaml_mod.intersect_values(left, right)
+    assert shared == {
+        "policy_options": {
+            "policy_statement": [{"name": "A", "term": 1, "action": "accept"}]
+        }
+    }
 
-    delta = xml2yaml_mod.subtract_common(
-        {"system": {"services": {"ssh": True}, "domain": "a"}},
-        shared,
+    left_delta = xml2yaml_mod.subtract_common(left, shared)
+    assert left_delta == {
+        "policy_options": {
+            "policy_statement": [{"name": "B", "term": 2, "action": "reject"}]
+        }
+    }
+
+
+def test_derive_provider_key_from_role_directory(xml2yaml_mod, tmp_path):
+    schema_file = _write_provider(
+        tmp_path,
+        "ansible-provider-junos-vqfx-ansible-role",
+        "vqfx-ansible-role_role",
     )
-    assert delta == {"system": {"domain": "a"}}
-
-
-def test_extract_hierarchy_groups(xml2yaml_mod):
-    groups = xml2yaml_mod.extract_hierarchy_groups([
-        ("dc1-leaf1", {"a": 1, "x": {"y": 1}}, "qfx"),
-        ("dc1-leaf2", {"a": 2, "x": {"y": 2}}, "qfx"),
-        ("dc1-host3", {"b": 3}, "qfx"),
-    ], role_type="vqfx-role")
-    assert sorted(groups.keys()) == ["all", "device_type:vqfx"]
-    assert len(groups["all"]) == 3
-    assert len(groups["device_type:vqfx"]) == 3
-
-
-def test_extract_hierarchy_groups_normalizes_ansible_role_suffix(xml2yaml_mod):
-    groups = xml2yaml_mod.extract_hierarchy_groups([
-        ("dc1-leaf1", {"a": 1}, "qfx"),
-        ("dc1-leaf2", {"a": 2}, "qfx"),
-    ], role_type="vqfx_ansible_role")
-    assert sorted(groups.keys()) == ["all", "device_type:vqfx"]
-    assert len(groups["device_type:vqfx"]) == 2
-
-
-def test_extract_hierarchy_groups_without_role_type_uses_structural_groups(xml2yaml_mod):
-    groups = xml2yaml_mod.extract_hierarchy_groups([
-        ("dc1-leaf1", {"a": 1, "x": {"y": 1}}, "qfx"),
-        ("dc1-leaf2", {"a": 2, "x": {"y": 2}}, "qfx"),
-        ("dc1-host3", {"b": 3}, "qfx"),
-    ])
-    assert sorted(groups.keys()) == ["all", "group:leaf"]
-    assert len(groups["all"]) == 3
-    assert len(groups["group:leaf"]) == 2
-
-
-def test_yaml_writers(xml2yaml_mod, tmp_path):
-    group_vars_root = tmp_path / "group_vars"
-    host_vars_root = tmp_path / "host_vars"
-
-    xml2yaml_mod.write_group_vars_flat(str(group_vars_root), "all", {"system": {"x": 1}})
-    xml2yaml_mod.write_group_vars_flat(str(group_vars_root), "group:leaf", {"chassis": {"y": 2}})
-    xml2yaml_mod.write_host_vars_flat(
-        str(host_vars_root),
-        "leaf1",
-        {"system": {"host_name": "leaf1", "services": {"ssh": True}}},
-        {"system": {"services": {"ssh": True}}},
-    )
-
-    with open(group_vars_root / "all.yml") as f:
-        assert yaml.safe_load(f) == {"system": {"x": 1}}
-    with open(group_vars_root / "leaf" / "all.yml") as f:
-        assert yaml.safe_load(f) == {"chassis": {"y": 2}}
-    with open(host_vars_root / "leaf1.yaml") as f:
-        assert yaml.safe_load(f) == {"system": {"host_name": "leaf1"}}
+    assert xml2yaml_mod.derive_provider_key(str(schema_file)) == "vqfx-ansible-role_role"
 
 
 def test_parse_xml_to_payload(xml2yaml_mod, tmp_path):
-    schema = {
-        "root": {
-            "name": "root",
-            "children": [
-                {
-                    "name": "configuration",
-                    "children": [
-                        {"name": "system", "type": "container", "children": [
-                            {"name": "host-name", "type": "leaf"},
-                            {"name": "product-name", "type": "leaf"},
-                        ]}
-                    ],
-                }
-            ]
-        }
-    }
-    xml_file = tmp_path / "router1.xml"
-    xml_file.write_text(
-        "<configuration><system><host-name>r1</host-name>"
-        "<product-name>QFX5100</product-name></system></configuration>"
+    schema_file = _write_provider(
+        tmp_path,
+        "ansible-provider-junos-vqfx-ansible-role",
+        "vqfx-ansible-role_role",
     )
+    xml_file = tmp_path / "router1.xml"
+    _write_xml(xml_file, host_name="router1", product_name="QFX5100", profile="qfx", router_id="1.1.1.1")
 
+    schema = json.loads(schema_file.read_text())
     hostname, payload, dtype = xml2yaml_mod.parse_xml_to_payload(str(xml_file), schema)
-    assert hostname == "r1"
-    assert payload["system"]["host_name"] == "r1"
+    assert hostname == "router1"
+    assert payload["system"]["host_name"] == "router1"
+    assert payload["routing_options"]["router_id"] == "1.1.1.1"
     assert dtype == "qfx"
 
 
-def test_xml2yaml_main_end_to_end(xml2yaml_mod, tmp_path, monkeypatch):
-    schema = {
-        "root": {
-            "name": "root",
-            "children": [
-                {
-                    "name": "configuration",
-                    "children": [
-                        {"name": "system", "type": "container", "children": [
-                            {"name": "host-name", "type": "leaf"},
-                            {"name": "product-name", "type": "leaf"},
-                            {"name": "services", "type": "container", "children": [
-                                {"name": "ssh", "type": "leaf"},
-                            ]},
-                        ]}
-                    ],
-                }
-            ]
-        }
-    }
-    schema_file = tmp_path / "trimmed_schema.json"
-    schema_file.write_text(json.dumps(schema))
+def test_generic_group_discovery_does_not_depend_on_hostnames(xml2yaml_mod):
+    host_var_entries = [
+        ("alpha", {"shared": {"ssh": True}, "feature": {"kind": "edge"}, "vlans": {"enabled": "true"}}),
+        ("omega", {"shared": {"ssh": True}, "feature": {"kind": "edge"}, "vlans": {"enabled": "true"}}),
+        ("one", {"shared": {"ssh": True}, "feature": {"kind": "core"}}),
+        ("two", {"shared": {"ssh": True}, "feature": {"kind": "core"}}),
+    ]
 
-    xml1 = tmp_path / "a.xml"
-    xml1.write_text(
-        "<configuration><system><host-name>a</host-name><product-name>QFX5100</product-name>"
-        "<services><ssh/></services></system></configuration>"
+    groups = xml2yaml_mod.derive_common_host_groups(
+        host_var_entries,
+        min_hosts=2,
+        max_groups=4,
+        min_benefit_score=1,
+        min_new_paths=0,
     )
-    xml2 = tmp_path / "b.xml"
-    xml2.write_text(
-        "<configuration><system><host-name>b</host-name><product-name>QFX5100</product-name>"
-        "<services><ssh/></services></system></configuration>"
+    memberships = {frozenset(members) for members in groups.values()}
+    assert frozenset({"alpha", "omega", "one", "two"}) in memberships
+    assert frozenset({"alpha", "omega"}) in memberships
+    assert frozenset({"one", "two"}) in memberships
+
+
+def test_collapse_daisy_chains_removes_low_value_intermediate_node(xml2yaml_mod):
+    common_groups = {
+        "group:candidate1": ["h1", "h2", "h3", "h4"],
+        "group:candidate2": ["h1", "h2", "h3"],
+        "group:candidate3": ["h1", "h2"],
+    }
+    parent_map = {
+        "group:candidate1": None,
+        "group:candidate2": "group:candidate1",
+        "group:candidate3": "group:candidate2",
+    }
+    payload_by_hostname = {
+        "h1": {"common": {"x": 1}, "pair": {"y": 1}},
+        "h2": {"common": {"x": 1}, "pair": {"y": 1}},
+        "h3": {"common": {"x": 1}},
+        "h4": {"common": {"x": 1}, "other": {"z": 1}},
+    }
+
+    reduced_groups, reduced_parent_map = xml2yaml_mod.collapse_daisy_chains(
+        common_groups,
+        parent_map,
+        payload_by_hostname,
+        max_single_child_chain=2,
+        min_unique_paths=1,
     )
+
+    assert "group:candidate2" not in reduced_groups
+    assert reduced_parent_map["group:candidate3"] == "group:candidate1"
+
+
+def test_xml2yaml_main_multi_provider_shared_all_yaml(xml2yaml_mod, tmp_path, monkeypatch):
+    qfx_schema = _write_provider(
+        tmp_path,
+        "ansible-provider-junos-vqfx-ansible-role",
+        "vqfx-ansible-role_role",
+    )
+    srx_schema = _write_provider(
+        tmp_path,
+        "ansible-provider-junos-srx-ansible-role",
+        "srx-ansible-role_role",
+    )
+
+    qfx_xml1 = tmp_path / "qfx-a.xml"
+    qfx_xml2 = tmp_path / "qfx-b.xml"
+    qfx_xml3 = tmp_path / "qfx-c.xml"
+    _write_xml(qfx_xml1, host_name="qfx-a", product_name="QFX5100", profile="qfx", router_id="1.1.1.1", vlan_enabled="true")
+    _write_xml(qfx_xml2, host_name="qfx-b", product_name="QFX5100", profile="qfx", router_id="1.1.1.2", vlan_enabled="true")
+    _write_xml(qfx_xml3, host_name="qfx-c", product_name="QFX5100", profile="qfx", router_id="1.1.1.3")
+
+    srx_xml1 = tmp_path / "srx-a.xml"
+    srx_xml2 = tmp_path / "srx-b.xml"
+    _write_xml(srx_xml1, host_name="srx-a", product_name="SRX300", profile="srx", security_policies="strict")
+    _write_xml(srx_xml2, host_name="srx-b", product_name="SRX300", profile="srx", security_policies="strict")
 
     out_dir = tmp_path / "out"
+
     monkeypatch.setattr(
         sys,
         "argv",
         [
             "jtaf-xml2yaml",
             "-j",
-            str(schema_file),
+            str(qfx_schema),
             "-x",
-            str(xml1),
-            str(xml2),
+            str(qfx_xml1),
+            str(qfx_xml2),
+            str(qfx_xml3),
             "-d",
             str(out_dir),
-            "-t",
-            "qfx",
         ],
     )
     xml2yaml_mod.main()
 
-    assert (out_dir / "hosts").exists()
-    assert (out_dir / "group_vars" / "all.yml").exists()
-    assert (out_dir / "group_vars" / "qfx" / "all.yml").exists()
-    assert (out_dir / "host_vars" / "a.yaml").exists()
-    assert (out_dir / "host_vars" / "b.yaml").exists()
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "jtaf-xml2yaml",
+            "-j",
+            str(srx_schema),
+            "-x",
+            str(srx_xml1),
+            str(srx_xml2),
+            "-d",
+            str(out_dir),
+        ],
+    )
+    xml2yaml_mod.main()
+
+    all_payload = yaml.safe_load((out_dir / "group_vars" / "all.yaml").read_text())
+    registry = all_payload["meta"]["jtaf_registry"]
+    qfx_entry = registry["providers"]["vqfx-ansible-role_role"]
+    srx_entry = registry["providers"]["srx-ansible-role_role"]
+
+    assert set(registry["providers"].keys()) == {"vqfx-ansible-role_role", "srx-ansible-role_role"}
+    assert all_payload["system"]["services"]["ssh"] is True
+    assert "product_name" not in all_payload["system"]
+
+    qfx_range = qfx_entry["group_range"]
+    srx_range = srx_entry["group_range"]
+    assert qfx_range["end"] < srx_range["start"]
+
+    qfx_root_path = out_dir / "group_vars" / qfx_entry["group_paths"][qfx_entry["root_group"]] / "all.yaml"
+    srx_root_path = out_dir / "group_vars" / srx_entry["group_paths"][srx_entry["root_group"]] / "all.yaml"
+    assert qfx_root_path.exists()
+    assert srx_root_path.exists()
+
+    qfx_root_payload = yaml.safe_load(qfx_root_path.read_text())
+    srx_root_payload = yaml.safe_load(srx_root_path.read_text())
+    assert qfx_root_payload["system"]["product_name"] == "QFX5100"
+    assert srx_root_payload["system"]["product_name"] == "SRX300"
+
     hosts_text = (out_dir / "hosts").read_text()
-    assert "[all]" in hosts_text
-    assert "[qfx]" in hosts_text
+    for hostname in ["qfx-a", "qfx-b", "qfx-c", "srx-a", "srx-b"]:
+        assert hostname in hosts_text
+    for group_name in qfx_entry["group_names"] + srx_entry["group_names"]:
+        assert f"[{group_name}]" in hosts_text
 
 
-def test_write_inventory_merges_existing_hosts(xml2yaml_mod, tmp_path):
-    out_dir = tmp_path / "out"
-    out_dir.mkdir(parents=True, exist_ok=True)
-    hosts_file = out_dir / "hosts"
-    hosts_file.write_text("[all]\nold1\n\n[legacy]\nold1\n")
-
-    xml2yaml_mod.write_inventory(
-        str(hosts_file),
-        ["new1"],
-        {"qfx": ["new1"]},
+def test_xml2yaml_main_removes_old_owned_groups_on_rerun(xml2yaml_mod, tmp_path, monkeypatch):
+    schema_file = _write_provider(
+        tmp_path,
+        "ansible-provider-junos-vqfx-ansible-role",
+        "vqfx-ansible-role_role",
     )
-
-    inventory_text = hosts_file.read_text()
-    assert "[all]" in inventory_text
-    assert "old1" in inventory_text
-    assert "new1" in inventory_text
-    assert "[legacy]" in inventory_text
-    assert "[qfx]" in inventory_text
-
-
-def test_xml2yaml_main_missing_configuration_raises(xml2yaml_mod, tmp_path, monkeypatch):
-    bad_schema = {"root": {"name": "root", "children": [{"name": "not-configuration"}]}}
-    schema_file = tmp_path / "bad.json"
-    schema_file.write_text(json.dumps(bad_schema))
-    xml1 = tmp_path / "a.xml"
-    xml1.write_text("<configuration><system/></configuration>")
-
-    monkeypatch.setattr(
-        sys,
-        "argv",
-        ["jtaf-xml2yaml", "-j", str(schema_file), "-x", str(xml1), "-d", str(tmp_path / "out")],
-    )
-    with pytest.raises(ValueError):
-        xml2yaml_mod.main()
-
-
-def test_xml2yaml_main_supports_external_playbook_paths(xml2yaml_mod, tmp_path, monkeypatch):
-    schema = {
-        "root": {
-            "name": "root",
-            "children": [
-                {
-                    "name": "configuration",
-                    "children": [
-                        {"name": "system", "type": "container", "children": [
-                            {"name": "host-name", "type": "leaf"},
-                            {"name": "product-name", "type": "leaf"},
-                        ]}
-                    ],
-                }
-            ]
-        }
-    }
-    schema_file = tmp_path / "trimmed_schema.json"
-    schema_file.write_text(json.dumps(schema))
-
-    xml_file = tmp_path / "leaf1.xml"
-    xml_file.write_text(
-        "<configuration><system><host-name>leaf1</host-name><product-name>QFX5100</product-name>"
-        "</system></configuration>"
-    )
-
-    role_out = tmp_path / "generated-role"
-    playbook_root = tmp_path / "playbook-root"
-    hosts_file = playbook_root / "inventory" / "hosts.ini"
-    group_vars_dir = playbook_root / "group_vars"
-    host_vars_dir = playbook_root / "host_vars"
-
-    monkeypatch.setattr(
-        sys,
-        "argv",
-        [
-            "jtaf-xml2yaml",
-            "-j",
-            str(schema_file),
-            "-x",
-            str(xml_file),
-            "-d",
-            str(role_out),
-            "--hosts-file",
-            str(hosts_file),
-            "--group-vars-dir",
-            str(group_vars_dir),
-            "--host-vars-dir",
-            str(host_vars_dir),
-            "-t",
-            "qfx",
-        ],
-    )
-    xml2yaml_mod.main()
-
-    assert hosts_file.exists()
-    assert (group_vars_dir / "all.yml").exists()
-    assert (group_vars_dir / "qfx" / "all.yml").exists()
-    assert (host_vars_dir / "leaf1.yaml").exists()
-
-
-def test_option_b_device_group_vars_and_global_intersection(xml2yaml_mod, tmp_path, monkeypatch):
-    schema = {
-        "root": {
-            "name": "root",
-            "children": [
-                {
-                    "name": "configuration",
-                    "children": [
-                        {"name": "system", "type": "container", "children": [
-                            {"name": "host-name", "type": "leaf"},
-                            {"name": "product-name", "type": "leaf"},
-                            {"name": "domain-name", "type": "leaf"},
-                        ]},
-                        {"name": "routing-options", "type": "container", "children": [
-                            {"name": "router-id", "type": "leaf"},
-                        ]},
-                    ],
-                }
-            ]
-        }
-    }
-    schema_file = tmp_path / "trimmed_schema.json"
-    schema_file.write_text(json.dumps(schema))
+    xml1 = tmp_path / "first-a.xml"
+    xml2 = tmp_path / "first-b.xml"
+    _write_xml(xml1, host_name="a", product_name="QFX5100", profile="qfx", vlan_enabled="true")
+    _write_xml(xml2, host_name="b", product_name="QFX5100", profile="qfx", vlan_enabled="true")
 
     out_dir = tmp_path / "out"
-    group_vars_dir = out_dir / "group_vars"
-
-    # Run 1 establishes all.yml.
-    xml1 = tmp_path / "run1-a.xml"
-    xml1.write_text(
-        "<configuration><system><host-name>a</host-name><product-name>QFX5100</product-name>"
-        "<domain-name>alpha.local</domain-name></system><routing-options><router-id>1.1.1.1</router-id>"
-        "</routing-options></configuration>"
-    )
     monkeypatch.setattr(
         sys,
         "argv",
-        ["jtaf-xml2yaml", "-j", str(schema_file), "-x", str(xml1), "-d", str(out_dir), "-t", "qfx"],
+        ["jtaf-xml2yaml", "-j", str(schema_file), "-x", str(xml1), str(xml2), "-d", str(out_dir)],
     )
     xml2yaml_mod.main()
 
-    all_payload_run1 = yaml.safe_load((group_vars_dir / "all.yml").read_text())
-    assert all_payload_run1["system"]["domain_name"] == "alpha.local"
-    assert all_payload_run1["routing_options"]["router_id"] == "1.1.1.1"
+    first_all = yaml.safe_load((out_dir / "group_vars" / "all.yaml").read_text())
+    first_entry = first_all["meta"]["jtaf_registry"]["providers"]["vqfx-ansible-role_role"]
+    assert first_entry["group_names"]
+    first_root_path = out_dir / "group_vars" / first_entry["group_paths"][first_entry["root_group"]]
+    assert first_root_path.exists()
 
-    # Run 2 conflicts on system/domain_name and routing_options/router_id.
-    xml2 = tmp_path / "run2-a.xml"
-    xml2.write_text(
-        "<configuration><system><host-name>b</host-name><product-name>QFX5100</product-name>"
-        "<domain-name>beta.local</domain-name></system><routing-options><router-id>2.2.2.2</router-id>"
-        "</routing-options></configuration>"
-    )
+    xml3 = tmp_path / "second-a.xml"
+    _write_xml(xml3, host_name="a", product_name="QFX5100", profile="qfx")
     monkeypatch.setattr(
         sys,
         "argv",
-        ["jtaf-xml2yaml", "-j", str(schema_file), "-x", str(xml2), "-d", str(out_dir), "-t", "qfx"],
+        ["jtaf-xml2yaml", "-j", str(schema_file), "-x", str(xml3), "-d", str(out_dir)],
     )
     xml2yaml_mod.main()
 
-    all_payload_run2 = yaml.safe_load((group_vars_dir / "all.yml").read_text())
-    device_payload_run2 = yaml.safe_load((group_vars_dir / "qfx" / "all.yml").read_text())
+    second_all = yaml.safe_load((out_dir / "group_vars" / "all.yaml").read_text())
+    second_entry = second_all["meta"]["jtaf_registry"]["providers"]["vqfx-ansible-role_role"]
+    assert second_entry.get("group_names", []) == []
+    assert not first_root_path.exists()
 
-    # Global all.yml is rebuilt as intersection across device groups.
-    assert all_payload_run2["system"]["product_name"] == "QFX5100"
-    assert "domain_name" not in all_payload_run2["system"]
-    assert all_payload_run2.get("routing_options") == {}
-
-    # Type-specific shared file tracks common values for that type across runs.
-    assert device_payload_run2["system"]["product_name"] == "QFX5100"
-    assert "domain_name" not in device_payload_run2["system"]
-
-    # Host-specific values remain in host_vars.
-    host_b = yaml.safe_load((out_dir / "host_vars" / "b.yaml").read_text())
-    assert host_b["system"]["host_name"] == "b"
-    assert host_b["system"]["domain_name"] == "beta.local"
-    assert host_b["routing_options"]["router_id"] == "2.2.2.2"
-
-
-def test_device_group_delta_flag_writes_delta(xml2yaml_mod, tmp_path, monkeypatch):
-    schema = {
-        "root": {
-            "name": "root",
-            "children": [
-                {
-                    "name": "configuration",
-                    "children": [
-                        {"name": "system", "type": "container", "children": [
-                            {"name": "host-name", "type": "leaf"},
-                            {"name": "product-name", "type": "leaf"},
-                            {"name": "domain-name", "type": "leaf"},
-                        ]},
-                    ],
-                }
-            ]
-        }
-    }
-    schema_file = tmp_path / "trimmed_schema.json"
-    schema_file.write_text(json.dumps(schema))
-
-    out_dir = tmp_path / "out"
-
-    xml1 = tmp_path / "qfx-a.xml"
-    xml1.write_text(
-        "<configuration><system><host-name>a</host-name><product-name>QFX5100</product-name>"
-        "<domain-name>alpha.local</domain-name></system></configuration>"
-    )
-    monkeypatch.setattr(
-        sys,
-        "argv",
-        [
-            "jtaf-xml2yaml",
-            "-j",
-            str(schema_file),
-            "-x",
-            str(xml1),
-            "-d",
-            str(out_dir),
-            "-t",
-            "qfx",
-            "--device-group-delta",
-        ],
-    )
-    xml2yaml_mod.main()
-
-    group_all_1 = yaml.safe_load((out_dir / "group_vars" / "all.yml").read_text())
-    assert group_all_1["system"]["product_name"] == "QFX5100"
-    assert group_all_1["system"]["domain_name"] == "alpha.local"
-    assert not (out_dir / "group_vars" / "qfx" / "all.yml").exists()
-
-    xml2 = tmp_path / "qfx-b.xml"
-    xml2.write_text(
-        "<configuration><system><host-name>b</host-name><product-name>QFX5100</product-name>"
-        "<domain-name>beta.local</domain-name></system></configuration>"
-    )
-    monkeypatch.setattr(
-        sys,
-        "argv",
-        [
-            "jtaf-xml2yaml",
-            "-j",
-            str(schema_file),
-            "-x",
-            str(xml2),
-            "-d",
-            str(out_dir),
-            "-t",
-            "qfx",
-            "--device-group-delta",
-        ],
-    )
-    xml2yaml_mod.main()
-
-    group_all_2 = yaml.safe_load((out_dir / "group_vars" / "all.yml").read_text())
-    host_b = yaml.safe_load((out_dir / "host_vars" / "b.yaml").read_text())
-
-    assert group_all_2["system"]["product_name"] == "QFX5100"
-    assert "domain_name" not in group_all_2["system"]
-    assert not (out_dir / "group_vars" / "qfx" / "all.yml").exists()
-    assert host_b["system"]["host_name"] == "b"
-    assert host_b["system"]["domain_name"] == "beta.local"
+    hosts_text = (out_dir / "hosts").read_text()
+    for old_group in first_entry["group_names"]:
+        assert f"[{old_group}]" not in hosts_text
 
 
 def test_jtaf_ansible_main_generates_role(ansible_mod, tmp_path, monkeypatch):
@@ -532,10 +450,8 @@ def test_elem_to_dict_list_leaflist_and_container(xml2yaml_mod):
     assert payload["vlans"]["vlan_id"] == "100"
 
 
-def test_element_node_and_write_group_no_payload(xml2yaml_mod, tmp_path):
+def test_element_node_returns_matching_schema_child(xml2yaml_mod):
     resources = {"name": "configuration", "children": [{"name": "system", "type": "container"}]}
     system_elem = xml2yaml_mod.ElementTree.fromstring("<system><host-name>r1</host-name></system>")
     node = xml2yaml_mod.element_node(system_elem, "system", resources)
     assert node["name"] == "system"
-    xml2yaml_mod.write_group_vars_flat(str(tmp_path), "all", {})
-    assert not (tmp_path / "group_vars" / "all.yml").exists()
