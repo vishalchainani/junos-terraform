@@ -1,67 +1,67 @@
 system:
   host_name: dc1-spine2
+  syslog:
+    file:
+    - contents:
+      - name: authorization
+        info: true
+      name: messages
+    - name: interactive-commands
+      contents:
+      - name: interactive-commands
+        any: true
+    _merge_list_directives:
+      file:
+        _merge_directive: merge_by_key
+        _merge_key: name
+    _merge_directive: merge_recursive
   _merge_directive: merge_recursive
 interfaces:
   interface:
-  - description: '*** to dc1-borderleaf1 ***'
-    unit:
+  - unit:
     - family:
         inet:
           address:
           - name: 10.30.141.1/30
       name: '0'
     name: xe-0/0/0
-  - description: '*** to dc1-borderleaf2 ***'
-    unit:
+  - unit:
     - family:
         inet:
           address:
           - name: 10.30.142.1/30
       name: '0'
     name: xe-0/0/1
-  - description: '*** to dc1-leaf1 ***'
-    unit:
-    - name: '0'
-      family:
+  - unit:
+    - family:
         inet:
           address:
           - name: 10.30.145.1/30
+      name: '0'
     name: xe-0/0/2
-  - name: xe-0/0/3
-    description: '*** to dc1-leaf2 ***'
-    unit:
-    - name: '0'
-      family:
+  - unit:
+    - family:
         inet:
           address:
           - name: 10.30.146.1/30
-  - name: xe-0/0/4
-    description: '*** to dc1-leaf3 ***'
-    unit:
-    - name: '0'
-      family:
+      name: '0'
+    name: xe-0/0/3
+  - unit:
+    - family:
         inet:
           address:
           - name: 10.30.147.1/30
+      name: '0'
+    name: xe-0/0/4
   - unit:
-    - description: '*** management ***'
-      family:
+    - family:
         inet:
           address:
           - name: 100.123.24.4/16
       name: '0'
     name: em0
-  - name: em1
-    unit:
-    - name: '0'
-      description: '*** to pfe ***'
-      family:
-        inet:
-          address:
-          - name: 169.254.0.2/24
   - unit:
-    - description: '*** loopback ***'
-      family:
+    - family:
         inet:
           address:
           - name: 10.30.100.4/32
@@ -78,31 +78,13 @@ routing_options:
 protocols:
   bgp:
     group:
-    - type: internal
-      local_address: 10.30.100.4
-      family:
-        evpn:
-          signaling: ''
+    - local_address: 10.30.100.4
       cluster: 10.30.100.4
-      local_as:
-        as_number: '65200'
-      multipath: ''
-      allow: 10.30.100.0/24
       neighbor:
       - name: 10.30.100.3
       name: EVPN_iBGP
-    - type: external
-      mtu_discovery: true
-      import: IPCLOS_BGP_IMP
-      export: IPCLOS_BGP_EXP
-      vpn_apply_export: true
-      local_as:
+    - local_as:
         as_number: '65502'
-      multipath:
-        multiple_as: true
-      bfd_liveness_detection:
-        minimum_interval: '1000'
-        multiplier: '3'
       neighbor:
       - name: 10.30.145.2
         description: EBGP peering to 10.30.145.2
@@ -129,32 +111,12 @@ protocols:
 policy_options:
   policy_statement:
   - term:
-    - from:
-        protocol: bgp
-      then:
+    - then:
         community:
         - community_name: dc1-spine2
           add: true
-        accept: true
       name: loopback
-    - name: default
-      then:
-        reject: true
     name: IPCLOS_BGP_EXP
-  - name: IPCLOS_BGP_IMP
-    term:
-    - name: loopback
-      from:
-        protocol: direct
-      then:
-        accept: true
-    - name: default
-      then:
-        reject: true
-  - name: PFE-LB
-    then:
-      load_balance:
-        per_packet: true
   community:
   - name: dc1-spine2
     members: '65502:1'

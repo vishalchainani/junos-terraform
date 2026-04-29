@@ -1,10 +1,98 @@
+protocols:
+  igmp_snooping:
+    vlan:
+    - name: default
+  bgp:
+    group:
+    - multihop:
+        no_nexthop_change: true
+      type: external
+      multipath:
+        multiple_as: true
+      neighbor:
+      - name: 10.30.100.8
+        description: DCI EBGP peering to 10.30.100.8
+        peer_as: '65201'
+      - name: 10.30.100.9
+        description: DCI EBGP peering to 10.30.100.9
+        peer_as: '65201'
+      family:
+        evpn:
+          signaling:
+            delay_route_advertisements:
+              minimum_delay:
+                routing_uptime: '480'
+      local_as:
+        as_number: '65200'
+      name: WAN_OVERLAY_eBGP
+    - type: internal
+      multipath: ''
+      neighbor:
+      - name: 10.30.100.3
+      - name: 10.30.100.4
+      family:
+        evpn:
+          signaling: ''
+      local_as:
+        as_number: '65200'
+      name: EVPN_iBGP
+    - vpn_apply_export: true
+      import: IPCLOS_BGP_IMP
+      bfd_liveness_detection:
+        multiplier: '3'
+        minimum_interval: '1000'
+      mtu_discovery: true
+      multipath:
+        multiple_as: true
+      export: IPCLOS_BGP_EXP
+      type: external
+      name: IPCLOS_eBGP
+  evpn:
+    default_gateway: do-not-advertise
+    multicast_mode: ingress-replication
+    encapsulation: vxlan
+routing_options:
+  forwarding_table:
+    ecmp_fast_reroute: true
+    export: PFE-LB
+    chained_composite_next_hop:
+      ingress:
+        evpn: true
 policy_options:
   policy_statement:
+  - name: EVPN_T5_EXPORT
+    term:
+    - name: fm_direct
+      from:
+        protocol: direct
+      then:
+        accept: true
+    - name: fm_static
+      from:
+        protocol: static
+      then:
+        accept: true
+    - name: fm_v4_default
+      from:
+        protocol: ospf
+        route_filter:
+        - address: 0.0.0.0/0
+          exact: true
+      then:
+        accept: true
+    - name: fm_v6_host
+      from:
+        protocol: evpn
+        route_filter:
+        - address: 0::0/0
+          prefix_length_range: /128-/128
+      then:
+        accept: true
   - name: IPCLOS_BGP_EXP
     term:
-    - from:
+    - name: loopback
+      from:
         protocol: bgp
-      name: loopback
       then:
         community:
         - add: true
@@ -26,54 +114,165 @@ policy_options:
     then:
       load_balance:
         per_packet: true
-  _merge_directive: merge_recursive
+  - name: to-ospf
+    term:
+    - name: '10'
+      from:
+        protocol: evpn
+      then:
+        accept: true
+    - name: '100'
+      then:
+        reject: true
+interfaces:
+  interface:
+  - name: xe-0/0/0
+    description: '*** to dc1-spine1 ***'
+    unit:
+    - name: '0'
+  - name: xe-0/0/1
+    description: '*** to dc1-spine2 ***'
+    unit:
+    - name: '0'
+  - name: xe-0/0/2
+    unit:
+    - name: '1'
+      vlan_id: '1'
+    - name: '2'
+      vlan_id: '2'
+    - name: '3'
+      vlan_id: '3'
+    vlan_tagging: true
+  - name: xe-0/0/3
+    unit:
+    - name: '1'
+      vlan_id: '1'
+    - name: '2'
+      vlan_id: '2'
+    - name: '3'
+      vlan_id: '3'
+    vlan_tagging: true
+  - name: xe-0/0/4
+    description: '*** to wan-pe1 ***'
+    unit:
+    - name: '0'
+  - name: em0
+    unit:
+    - name: '0'
+      description: '*** management ***'
+  - name: em1
+    unit:
+    - name: '0'
+      description: '*** to pfe ***'
+      family:
+        inet:
+          address:
+          - name: 169.254.0.2/24
+  - name: lo0
+    unit:
+    - name: '0'
+      description: '*** loopback ***'
+    - name: '10001'
+      description: Loopback for VXLAN control packets for VRF_10001
+    - name: '10002'
+      description: Loopback for VXLAN control packets for VRF_10002
+    - name: '10003'
+      description: Loopback for VXLAN control packets for VRF_10003
 forwarding_options:
   storm_control_profiles:
   - name: default
     all: ''
-protocols:
-  igmp_snooping:
-    vlan:
-    - name: default
-  bgp:
-    group:
-    - name: EVPN_iBGP
-      multipath: ''
-      local_as:
-        as_number: '65200'
-      type: internal
-      family:
-        evpn:
-          signaling: ''
-    - import: IPCLOS_BGP_IMP
-      bfd_liveness_detection:
-        minimum_interval: '1000'
-        multiplier: '3'
-      vpn_apply_export: true
-      name: IPCLOS_eBGP
-      export: IPCLOS_BGP_EXP
-      multipath:
-        multiple_as: true
-      mtu_discovery: true
-      type: external
-  _merge_directive: merge_recursive
-routing_options:
-  forwarding_table:
-    export: PFE-LB
-    ecmp_fast_reroute: true
-  _merge_directive: merge_recursive
+routing_instances:
+  instance:
+  - protocols:
+      evpn:
+        ip_prefix_routes:
+          advertise: direct-nexthop
+          vni: '10001'
+          export: EVPN_T5_EXPORT
+          encapsulation: vxlan
+      ospf:
+        export: to-ospf
+        area:
+        - name: 0.0.0.0
+          interface:
+          - name: xe-0/0/2.1
+            metric: '100'
+          - name: xe-0/0/3.1
+            metric: '200'
+    interface:
+    - name: xe-0/0/2.1
+    - name: xe-0/0/3.1
+    - name: lo0.10001
+    routing_options:
+      auto_export: ''
+    vrf_table_label: ''
+    instance_type: vrf
+    name: VRF_10001
+    vrf_target:
+      community: target:1:10001
+  - protocols:
+      evpn:
+        ip_prefix_routes:
+          advertise: direct-nexthop
+          vni: '10002'
+          export: EVPN_T5_EXPORT
+          encapsulation: vxlan
+      ospf:
+        export: to-ospf
+        area:
+        - name: 0.0.0.0
+          interface:
+          - name: xe-0/0/2.2
+            metric: '100'
+          - name: xe-0/0/3.2
+            metric: '200'
+    interface:
+    - name: xe-0/0/2.2
+    - name: xe-0/0/3.2
+    - name: lo0.10002
+    routing_options:
+      auto_export: ''
+    vrf_table_label: ''
+    instance_type: vrf
+    name: VRF_10002
+    vrf_target:
+      community: target:1:10002
+  - protocols:
+      evpn:
+        ip_prefix_routes:
+          advertise: direct-nexthop
+          vni: '10003'
+          export: EVPN_T5_EXPORT
+          encapsulation: vxlan
+      ospf:
+        export: to-ospf
+        area:
+        - name: 0.0.0.0
+          interface:
+          - name: xe-0/0/2.3
+            metric: '100'
+          - name: xe-0/0/3.3
+            metric: '200'
+    interface:
+    - name: xe-0/0/2.3
+    - name: xe-0/0/3.3
+    - name: lo0.10003
+    routing_options:
+      auto_export: ''
+    vrf_table_label: ''
+    instance_type: vrf
+    name: VRF_10003
+    vrf_target:
+      community: target:1:10003
+switch_options:
+  vtep_source_interface:
+    interface_name: lo0.0
+  vrf_target:
+    community: target:9999:9999
+    auto: ''
+version: 18.1R3-S5.3
 system:
-  syslog:
-    file:
-    - contents:
-      - notice: true
-        name: any
-      name: messages
-    _merge_list_directives:
-      file:
-        _merge_directive: merge_by_key
-        _merge_key: name
-    _merge_directive: merge_recursive
   extensions:
     providers:
     - name: juniper
@@ -84,32 +283,10 @@ system:
       license_type:
       - name: juniper
         deployment_scope: commercial
-  _merge_directive: merge_recursive
-interfaces:
-  interface:
-  - unit:
-    - name: '0'
-    name: xe-0/0/0
-  - unit:
-    - name: '0'
-    name: xe-0/0/1
-  - name: xe-0/0/2
-  - unit:
-    - description: '*** management ***'
-      name: '0'
-    name: em0
-  - unit:
-    - name: '0'
-      description: '*** to pfe ***'
-      family:
-        inet:
-          address:
-          - name: 169.254.0.2/24
-    name: em1
-  - unit:
-    - description: '*** loopback ***'
-      name: '0'
-    name: lo0
-  _merge_directive: merge_recursive
-version: 18.1R3-S5.3
+  syslog:
+    file:
+    - contents:
+      - notice: true
+        name: any
+      name: messages
 _merge_directive: merge_recursive

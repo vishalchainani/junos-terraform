@@ -1,3 +1,43 @@
+protocols:
+  igmp_snooping:
+    vlan:
+    - name: default
+  bgp:
+    group:
+    - name: EVPN_iBGP
+      neighbor:
+      - name: 10.30.100.3
+      - name: 10.30.100.4
+      multipath: ''
+      family:
+        evpn:
+          signaling: ''
+      local_as:
+        as_number: '65200'
+      type: internal
+    - vpn_apply_export: true
+      import: IPCLOS_BGP_IMP
+      name: IPCLOS_eBGP
+      bfd_liveness_detection:
+        multiplier: '3'
+        minimum_interval: '1000'
+      multipath:
+        multiple_as: true
+      export: IPCLOS_BGP_EXP
+      type: external
+      mtu_discovery: true
+  evpn:
+    extended_vni_list: all
+    default_gateway: do-not-advertise
+    multicast_mode: ingress-replication
+    encapsulation: vxlan
+routing_options:
+  forwarding_table:
+    ecmp_fast_reroute: true
+    export: PFE-LB
+    chained_composite_next_hop:
+      ingress:
+        evpn: true
 policy_options:
   policy_statement:
   - name: EVPN_T5_EXPORT
@@ -28,120 +68,69 @@ policy_options:
           prefix_length_range: /128-/128
       then:
         accept: true
-  - term:
+  - name: IPCLOS_BGP_EXP
+    term:
     - name: loopback
+      from:
+        protocol: bgp
       then:
         community:
         - add: true
-    name: IPCLOS_BGP_EXP
-switch_options:
-  vrf_target:
-    community: target:9999:9999
-    auto: ''
-  vtep_source_interface:
-    interface_name: lo0.0
-vlans:
-  vlan:
-  - name: vlan_1001
-    vlan_id: '1001'
-    l3_interface: irb.1001
-    vxlan:
-      vni: '1001'
-  - name: vlan_2001
-    vlan_id: '2001'
-    l3_interface: irb.2001
-    vxlan:
-      vni: '2001'
-  - name: vlan_3001
-    vlan_id: '3001'
-    l3_interface: irb.3001
-    vxlan:
-      vni: '3001'
-routing_options:
-  forwarding_table:
-    chained_composite_next_hop:
-      ingress:
-        evpn: true
-routing_instances:
-  instance:
-  - interface:
-    - name: irb.1001
-    - name: lo0.10001
-    name: VRF_10001
-    vrf_table_label: ''
-    instance_type: vrf
-    vrf_target:
-      community: target:1:10001
-    routing_options:
-      auto_export: ''
-    protocols:
-      evpn:
-        ip_prefix_routes:
-          export: EVPN_T5_EXPORT
-          advertise: direct-nexthop
-          vni: '10001'
-          encapsulation: vxlan
-  - interface:
-    - name: irb.2001
-    - name: lo0.10002
-    name: VRF_10002
-    vrf_table_label: ''
-    instance_type: vrf
-    vrf_target:
-      community: target:1:10002
-    routing_options:
-      auto_export: ''
-    protocols:
-      evpn:
-        ip_prefix_routes:
-          export: EVPN_T5_EXPORT
-          advertise: direct-nexthop
-          vni: '10002'
-          encapsulation: vxlan
-  - interface:
-    - name: irb.3001
-    - name: lo0.10003
-    name: VRF_10003
-    vrf_table_label: ''
-    instance_type: vrf
-    vrf_target:
-      community: target:1:10003
-    routing_options:
-      auto_export: ''
-    protocols:
-      evpn:
-        ip_prefix_routes:
-          export: EVPN_T5_EXPORT
-          advertise: direct-nexthop
-          vni: '10003'
-          encapsulation: vxlan
+        accept: true
+    - name: default
+      then:
+        reject: true
+  - name: IPCLOS_BGP_IMP
+    term:
+    - name: loopback
+      from:
+        protocol: direct
+      then:
+        accept: true
+    - name: default
+      then:
+        reject: true
+  - name: PFE-LB
+    then:
+      load_balance:
+        per_packet: true
 interfaces:
   interface:
-  - description: '*** to dc1-spine1 ***'
+  - name: xe-0/0/0
+    description: '*** to dc1-spine1 ***'
     unit:
     - name: '0'
-    name: xe-0/0/0
-  - description: '*** to dc1-spine2 ***'
+  - name: xe-0/0/1
+    description: '*** to dc1-spine2 ***'
     unit:
     - name: '0'
-    name: xe-0/0/1
-  - ether_options:
+  - name: xe-0/0/2
+    ether_options:
       ieee_802_3ad:
         bundle: ae0
-    name: xe-0/0/2
-  - unit:
-    - name: '0'
-    name: ae0
+  - name: ae0
     aggregated_ether_options:
       lacp:
-        active: true
         periodic: fast
+        active: true
+    unit:
+    - name: '0'
     esi:
       all_active: true
-  - unit:
+  - name: em0
+    unit:
     - name: '0'
-    name: em0
-  - unit:
+      description: '*** management ***'
+  - name: em1
+    unit:
+    - name: '0'
+      description: '*** to pfe ***'
+      family:
+        inet:
+          address:
+          - name: 169.254.0.2/24
+  - name: irb
+    unit:
     - name: '1001'
       family:
         inet:
@@ -160,27 +149,112 @@ interfaces:
           address:
           - name: 10.3.1.1/24
       mac: 02:0a:03:01:01:18
-    name: irb
-  - unit:
+  - name: lo0
+    unit:
     - name: '0'
-    - description: Loopback for VXLAN control packets for VRF_10001
-      name: '10001'
-    - description: Loopback for VXLAN control packets for VRF_10002
-      name: '10002'
-    - description: Loopback for VXLAN control packets for VRF_10003
-      name: '10003'
-    name: lo0
-protocols:
-  bgp:
-    group:
-    - name: EVPN_iBGP
-      neighbor:
-      - name: 10.30.100.3
-      - name: 10.30.100.4
-    - name: IPCLOS_eBGP
-  evpn:
-    multicast_mode: ingress-replication
-    extended_vni_list: all
-    default_gateway: do-not-advertise
-    encapsulation: vxlan
+      description: '*** loopback ***'
+    - name: '10001'
+      description: Loopback for VXLAN control packets for VRF_10001
+    - name: '10002'
+      description: Loopback for VXLAN control packets for VRF_10002
+    - name: '10003'
+      description: Loopback for VXLAN control packets for VRF_10003
+forwarding_options:
+  storm_control_profiles:
+  - name: default
+    all: ''
+vlans:
+  vlan:
+  - name: vlan_1001
+    vlan_id: '1001'
+    l3_interface: irb.1001
+    vxlan:
+      vni: '1001'
+  - name: vlan_2001
+    vlan_id: '2001'
+    l3_interface: irb.2001
+    vxlan:
+      vni: '2001'
+  - name: vlan_3001
+    vlan_id: '3001'
+    l3_interface: irb.3001
+    vxlan:
+      vni: '3001'
+routing_instances:
+  instance:
+  - protocols:
+      evpn:
+        ip_prefix_routes:
+          advertise: direct-nexthop
+          vni: '10001'
+          export: EVPN_T5_EXPORT
+          encapsulation: vxlan
+    interface:
+    - name: irb.1001
+    - name: lo0.10001
+    routing_options:
+      auto_export: ''
+    vrf_table_label: ''
+    instance_type: vrf
+    name: VRF_10001
+    vrf_target:
+      community: target:1:10001
+  - protocols:
+      evpn:
+        ip_prefix_routes:
+          advertise: direct-nexthop
+          vni: '10002'
+          export: EVPN_T5_EXPORT
+          encapsulation: vxlan
+    interface:
+    - name: irb.2001
+    - name: lo0.10002
+    routing_options:
+      auto_export: ''
+    vrf_table_label: ''
+    instance_type: vrf
+    name: VRF_10002
+    vrf_target:
+      community: target:1:10002
+  - protocols:
+      evpn:
+        ip_prefix_routes:
+          advertise: direct-nexthop
+          vni: '10003'
+          export: EVPN_T5_EXPORT
+          encapsulation: vxlan
+    interface:
+    - name: irb.3001
+    - name: lo0.10003
+    routing_options:
+      auto_export: ''
+    vrf_table_label: ''
+    instance_type: vrf
+    name: VRF_10003
+    vrf_target:
+      community: target:1:10003
+switch_options:
+  vtep_source_interface:
+    interface_name: lo0.0
+  vrf_target:
+    community: target:9999:9999
+    auto: ''
+version: 18.1R3-S5.3
+system:
+  extensions:
+    providers:
+    - name: juniper
+      license_type:
+      - name: juniper
+        deployment_scope: commercial
+    - name: chef
+      license_type:
+      - name: juniper
+        deployment_scope: commercial
+  syslog:
+    file:
+    - contents:
+      - notice: true
+        name: any
+      name: messages
 _merge_directive: merge_recursive

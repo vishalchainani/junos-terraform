@@ -1,29 +1,49 @@
-policy_options:
-  policy_statement:
-  - term:
-    - name: loopback
-      then:
-        community:
-        - add: true
-    name: IPCLOS_BGP_EXP
 interfaces:
   interface:
   - unit:
-    - name: '0'
+    - family:
+        inet: {}
+      name: '0'
     name: xe-0/0/0
   - unit:
-    - name: '0'
+    - family:
+        inet: {}
+      name: '0'
     name: xe-0/0/1
-  - name: xe-0/0/2
   - unit:
-    - name: '0'
+    - family:
+        inet: {}
+      name: '0'
     name: em0
   - unit:
-    - name: '0'
+    - family:
+        inet: {}
+      name: '0'
     name: lo0
+policy_options:
+  _merge_directive: merge_recursive
+  policy_statement:
+  - term:
+    - then:
+        community:
+        - add: true
+      name: loopback
+    name: IPCLOS_BGP_EXP
+  _merge_list_directives:
+    policy_statement:
+      _merge_directive: merge_by_key
+      _merge_key: name
 protocols:
+  _merge_directive: merge_recursive
   bgp:
+    _merge_directive: merge_recursive
     group:
     - name: EVPN_iBGP
-    - name: IPCLOS_eBGP
-_merge_directive: merge_recursive
+    - local_as: {}
+      name: IPCLOS_eBGP
+    _merge_list_directives:
+      group:
+        _merge_directive: merge_by_key
+        _merge_key: name
+routing_options:
+  _merge_directive: merge_recursive
