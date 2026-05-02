@@ -1,21 +1,3 @@
-system:
-  host_name: dc1-spine1
-  syslog:
-    file:
-    - contents:
-      - name: authorization
-        info: true
-      name: messages
-    - name: interactive-commands
-      contents:
-      - name: interactive-commands
-        any: true
-    _merge_list_directives:
-      file:
-        _merge_directive: merge_by_key
-        _merge_key: name
-    _merge_directive: merge_recursive
-  _merge_directive: merge_recursive
 interfaces:
   interface:
   - unit:
@@ -72,43 +54,10 @@ interfaces:
       _merge_directive: merge_by_key
       _merge_key: name
   _merge_directive: merge_recursive
-routing_options:
-  router_id: 10.30.100.3
-  _merge_directive: merge_recursive
-protocols:
-  bgp:
-    group:
-    - local_address: 10.30.100.3
-      cluster: 10.30.100.3
-      neighbor:
-      - name: 10.30.100.4
-      name: EVPN_iBGP
-    - local_as:
-        as_number: '65501'
-      neighbor:
-      - name: 10.30.135.2
-        description: EBGP peering to 10.30.135.2
-        peer_as: '65503'
-      - name: 10.30.136.2
-        description: EBGP peering to 10.30.136.2
-        peer_as: '65504'
-      - name: 10.30.137.2
-        description: EBGP peering to 10.30.137.2
-        peer_as: '65505'
-      - name: 10.30.131.2
-        description: EBGP peering to 10.30.131.2
-        peer_as: '65506'
-      - name: 10.30.132.2
-        description: EBGP peering to 10.30.132.2
-        peer_as: '65507'
-      name: IPCLOS_eBGP
-    _merge_list_directives:
-      group:
-        _merge_directive: merge_by_key
-        _merge_key: name
-    _merge_directive: merge_recursive
-  _merge_directive: merge_recursive
 policy_options:
+  community:
+  - members: '65501:1'
+    name: dc1-spine1
   policy_statement:
   - term:
     - then:
@@ -117,12 +66,63 @@ policy_options:
           add: true
       name: loopback
     name: IPCLOS_BGP_EXP
-  community:
-  - name: dc1-spine1
-    members: '65501:1'
   _merge_list_directives:
     policy_statement:
       _merge_directive: merge_by_key
       _merge_key: name
+  _merge_directive: merge_recursive
+protocols:
+  bgp:
+    group:
+    - cluster: 10.30.100.3
+      local_address: 10.30.100.3
+      neighbor:
+      - name: 10.30.100.4
+      name: EVPN_iBGP
+    - local_as:
+        as_number: '65501'
+      neighbor:
+      - description: EBGP peering to 10.30.135.2
+        name: 10.30.135.2
+        peer_as: '65503'
+      - description: EBGP peering to 10.30.136.2
+        name: 10.30.136.2
+        peer_as: '65504'
+      - description: EBGP peering to 10.30.137.2
+        name: 10.30.137.2
+        peer_as: '65505'
+      - description: EBGP peering to 10.30.131.2
+        name: 10.30.131.2
+        peer_as: '65506'
+      - description: EBGP peering to 10.30.132.2
+        name: 10.30.132.2
+        peer_as: '65507'
+      name: IPCLOS_eBGP
+    _merge_list_directives:
+      group:
+        _merge_directive: merge_by_key
+        _merge_key: name
+    _merge_directive: merge_recursive
+  _merge_directive: merge_recursive
+routing_options:
+  router_id: 10.30.100.3
+  _merge_directive: merge_recursive
+system:
+  host_name: dc1-spine1
+  syslog:
+    file:
+    - contents:
+      - info: true
+        name: authorization
+      name: messages
+    - contents:
+      - any: true
+        name: interactive-commands
+      name: interactive-commands
+    _merge_list_directives:
+      file:
+        _merge_directive: merge_by_key
+        _merge_key: name
+    _merge_directive: merge_recursive
   _merge_directive: merge_recursive
 _merge_directive: merge_recursive

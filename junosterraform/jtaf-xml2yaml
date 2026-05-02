@@ -751,7 +751,7 @@ def build_group_delta_payloads(
     merge_profile: str,
     list_strategy_default: str,
 ) -> dict[str, dict[str, Any]]:
-    """Compute strict deltas for groups against parent ancestry payloads."""
+    """Compute the default per-group delta payloads against parent ancestry baselines."""
     group_deltas: dict[str, dict[str, Any]] = {}
     ordered_names = sorted(
         parent_map.keys(),
@@ -1445,6 +1445,8 @@ def main() -> None:
         payload_by_hostname_all,
     )
 
+    # Per-group delta output is the default behavior: each group_vars/<group>/all.yml
+    # is written as the delta against its inherited baseline.
     group_delta_payloads = build_group_delta_payloads(
         effective_parent_map,
         group_full_payloads,

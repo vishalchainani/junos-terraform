@@ -1,180 +1,135 @@
 #!/usr/bin/env python3
-"""
-JTAF Ansible Filters for hierarchical YAML merge with merge directives.
+"""JTAF Ansible filters for merge-directive aware payload handling."""
 
-Supports _merge_directive meta-instructions within YAML variables to control
-how merging proceeds during playbook execution.
-
-Merge directives:
-  _merge_directive: "replace"           # Replace parent value (default)
-  _merge_directive: "append"            # Append to parent list
-  _merge_directive: "prepend"           # Prepend to parent list
-  _merge_directive: "extend"            # Extend parent list
-  _merge_directive: "merge_recursive"   # Deep merge dicts
-  _merge_directive: "keep_parent"       # Use parent, ignore this override
-"""
+from __future__ import annotations
 
 from copy import deepcopy
-from typing import Any, Dict, Optional
+from typing import Any
 
-try:
-    from ansible.errors import AnsibleFilterError
-except ImportError:
-    class AnsibleFilterError(Exception):
-        """Fallback error type when ansible is not installed."""
+
+def _deep_merge(base: Any, override: Any) -> Any:
+    """Recursively merge dict/list values, preferring override leaves."""
+    if isinstance(base, dict) and isinstance(override, dict):
+        merged = deepcopy(base)
+        for key, value in override.items():
+            if key in merged:
+                merged[key] = _deep_merge(merged[key], value)
+            else:
+                merged[key] = deepcopy(value)
+        return merged
+
+    if isinstance(base, list) and isinstance(override, list):
+        # For list-of-dict payloads keyed by "name", merge by key to avoid
+        # duplicating nested structures like interface.unit and syslog.contents.
+        if all(isinstance(item, dict) and "name" in item for item in base + override):
+            return _merge_list_by_key(deepcopy(base) + deepcopy(override), "name")
+        return deepcopy(base) + deepcopy(override)
+
+    return deepcopy(override)
+
+
+def _merge_list_by_key(values: list[Any], merge_key: str) -> list[Any]:
+    """Merge list entries of dicts by a stable key while preserving order."""
+    merged_by_key: dict[str, Any] = {}
+    order: list[str] = []
+    passthrough: list[Any] = []
+
+    for item in values:
+        if not isinstance(item, dict) or merge_key not in item:
+            passthrough.append(deepcopy(item))
+            continue
+
+        key_value = str(item[merge_key])
+        if key_value not in merged_by_key:
+            merged_by_key[key_value] = deepcopy(item)
+            order.append(key_value)
+        else:
+            merged_by_key[key_value] = _deep_merge(merged_by_key[key_value], item)
+
+    return [merged_by_key[k] for k in order] + passthrough
+
+
+def _apply_list_directives(data: Any) -> Any:
+    """Apply _merge_list_directives recursively to dict/list structures."""
+    if isinstance(data, list):
+        return [_apply_list_directives(item) for item in data]
+
+    if not isinstance(data, dict):
+        return data
+
+    list_directives = data.get("_merge_list_directives", {})
+    result: dict[str, Any] = {}
+
+    for key, value in data.items():
+        if key == "_merge_list_directives":
+            result[key] = value
+            continue
+
+        processed_value = _apply_list_directives(value)
+        directive = list_directives.get(key)
+
+        if (
+            isinstance(directive, dict)
+            and directive.get("_merge_directive") == "merge_by_key"
+            and isinstance(processed_value, list)
+        ):
+            merge_key = directive.get("_merge_key", "name")
+            processed_value = _merge_list_by_key(processed_value, merge_key)
+
+        result[key] = processed_value
+
+    return result
 
 
 class FilterModule:
-    """JTAF filters for Ansible."""
+    """Expose JTAF custom filters to Ansible."""
 
-    def filters(self):
-        """Return the filter-name to callable mapping for Ansible registration."""
+    def filters(self) -> dict[str, Any]:
         return {
-            'jtaf_apply_merge_directives': self.apply_merge_directives,
-            'jtaf_extract_directive': self.extract_directive,
-            'jtaf_remove_meta': self.remove_meta_keys,
+            "jtaf_extract_directive": self.extract_directive,
+            "jtaf_remove_meta": self.remove_meta_keys,
+            "jtaf_apply_merge_directives": self.apply_merge_directives,
         }
 
     @staticmethod
-    def extract_directive(data: Any) -> Optional[str]:
-        """Extract _merge_directive value from a dict if present."""
+    def extract_directive(data: Any) -> str:
         if isinstance(data, dict):
-            return data.get('_merge_directive')
-        return None
+            return str(data.get("_merge_directive", "replace"))
+        return "replace"
 
     @staticmethod
     def remove_meta_keys(data: Any) -> Any:
-        """Recursively remove all _merge_* keys from data structure."""
+        """Strip merge metadata and transient markers from payloads."""
         if isinstance(data, dict):
             return {
-                k: FilterModule.remove_meta_keys(v)
-                for k, v in data.items()
-                if not k.startswith('_merge')
+                key: FilterModule.remove_meta_keys(value)
+                for key, value in data.items()
+                if not key.startswith("_merge") and key != "_applied_directive"
             }
+
         if isinstance(data, list):
             return [FilterModule.remove_meta_keys(item) for item in data]
+
         return data
 
-    def apply_merge_directives(self, jtaf_effective: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Process _merge_directive meta-instructions throughout the data structure.
+    def apply_merge_directives(self, jtaf_effective: dict[str, Any]) -> dict[str, Any]:
+        """Apply supported merge/list directives within an already merged payload."""
+        processed = _apply_list_directives(deepcopy(jtaf_effective))
+        return self._mark_directives(processed)
 
-        This filter walks through jtaf_effective and processes _merge_directive
-        keys to determine how values should be handled.
-
-        Example YAML with _merge_directive:
-            routing:
-              bgp:
-                _merge_directive: replace    # Replace entire BGP block
-                local_as: 65001
-
-            interfaces:
-              _merge_directive: append       # Append to parent interfaces list
-              - name: eth0
-                mtu: 1500
-        """
-        result = deepcopy(jtaf_effective)
-        return self._process_directives(result)
-
-    def _process_directives(self, data: Any) -> Any:
-        """Recursively process merge directives in data structure."""
+    def _mark_directives(self, data: Any) -> Any:
+        """Mark nodes that carried explicit _merge_directive metadata."""
         if isinstance(data, dict):
-            # Check if this dict has a merge directive
-            directive = data.get('_merge_directive')
-
-            # Process nested structures first
-            processed = {}
-            for key, value in data.items():
-                if key.startswith('_merge'):
-                    # Keep meta-directive keys for now (will remove later)
-                    processed[key] = value
-                else:
-                    processed[key] = self._process_directives(value)
-
-            # Apply directive if present (mostly for documentation/transparency)
-            # The actual merge behavior is handled at the Ansible combine level
+            directive = data.get("_merge_directive")
+            marked = {
+                key: self._mark_directives(value)
+                for key, value in data.items()
+            }
             if directive:
-                processed['_applied_directive'] = directive
-
-            return processed
+                marked["_applied_directive"] = directive
+            return marked
 
         if isinstance(data, list):
-            return [self._process_directives(item) for item in data]
+            return [self._mark_directives(item) for item in data]
 
         return data
-
-
-def _merge_replace(_base: Any, override: Any) -> Any:
-    """Always return override value."""
-    return override
-
-
-def _merge_keep_parent(base: Any, _override: Any) -> Any:
-    """Always keep parent/base value."""
-    return base
-
-
-def _merge_recursive(base: Any, override: Any) -> Any:
-    """Deep-merge dicts, otherwise return override."""
-    if isinstance(base, dict) and isinstance(override, dict):
-        result = deepcopy(base)
-        result.update(override)
-        return result
-    return override
-
-
-def _merge_append(base: Any, override: Any) -> Any:
-    """Append override to base with list-friendly coercion."""
-    if isinstance(base, list) and isinstance(override, list):
-        return base + override
-    if isinstance(base, list):
-        return base + [override]
-    return [base, override]
-
-
-def _merge_prepend(base: Any, override: Any) -> Any:
-    """Prepend override to base with list-friendly coercion."""
-    if isinstance(base, list) and isinstance(override, list):
-        return override + base
-    if isinstance(base, list):
-        return [override] + base
-    return [override, base]
-
-
-def _merge_extend(base: Any, override: Any) -> Any:
-    """Strict list-only append operation."""
-    if not isinstance(base, list) or not isinstance(override, list):
-        raise AnsibleFilterError(
-            f"'extend' directive requires both values to be lists, "
-            f"got {type(base).__name__} and {type(override).__name__}"
-        )
-    return base + override
-
-
-DIRECTIVE_HANDLERS = {
-    'replace': _merge_replace,
-    'keep_parent': _merge_keep_parent,
-    'merge_recursive': _merge_recursive,
-    'append': _merge_append,
-    'prepend': _merge_prepend,
-    'extend': _merge_extend,
-}
-
-
-def jtaf_merge_with_directive(base: Any, override: Any, directive: Optional[str] = None) -> Any:
-    """
-    Merge two values according to a merge directive.
-
-    Args:
-        base: Base/parent value
-        override: Override/child value
-        directive: Merge directive ('replace', 'append', 'prepend', 'extend', 'merge_recursive')
-
-    Returns:
-        Merged value
-    """
-    normalized = directive or 'replace'
-    handler = DIRECTIVE_HANDLERS.get(normalized)
-    if handler is None:
-        raise AnsibleFilterError(f"Unknown merge directive: {normalized}")
-    return handler(base, override)

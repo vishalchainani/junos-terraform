@@ -89,6 +89,10 @@
 		{% if ele.type=="leaf-list" %}
 		{{- '\n'+' '*4*level}}{{'{%-'}} if {{ pathvar + '.' + path2variable(preparename(ele.name)) }} is boolean {{'%}'}}
 {{' '*4*level}}<{{ele.name}}/>
+{{' '*4*level}}{{'{%-'}} elif {{ pathvar + '.' + path2variable(preparename(ele.name)) }} is iterable and {{ pathvar + '.' + path2variable(preparename(ele.name)) }} is not string {{'%}'}}
+{{' '*4*level}}{{'{%-'}} for _item in {{ pathvar + '.' + path2variable(preparename(ele.name)) }} {{'%}'}}
+{{' '*4*level}}<{{ele.name}}>{{'{{'}} _item {{'}}'}}</{{ele.name}}>
+{{' '*4*level}}{{'{%-'}} endfor {{'%}'}}
 {{' '*4*level}}{{'{%-'}} else {{'%}'}}
 {{' '*4*level}}<{{ele.name}}>{{'{{'}}{{ pathvar + '.' + path2variable(preparename(ele.name)) }}{{'}}'}}</{{ele.name}}>
 {{' '*4*level}}{{'{%-'}} endif {{'%}'}}
