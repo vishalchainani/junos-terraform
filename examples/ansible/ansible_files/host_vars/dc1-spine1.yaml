@@ -56,7 +56,8 @@ interfaces:
   _merge_directive: merge_recursive
 policy_options:
   community:
-  - members: '65501:1'
+  - members:
+    - '65501:1'
     name: dc1-spine1
   policy_statement:
   - term:

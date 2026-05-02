@@ -23,7 +23,8 @@ interfaces:
     - family:
         ethernet_switching:
           vlan:
-            members: '3001'
+            members:
+            - '3001'
       name: '0'
     name: ae0
   - unit:
@@ -62,7 +63,8 @@ interfaces:
   _merge_directive: merge_recursive
 policy_options:
   community:
-  - members: '65505:1'
+  - members:
+    - '65505:1'
     name: dc1-leaf3
   policy_statement:
   - term:

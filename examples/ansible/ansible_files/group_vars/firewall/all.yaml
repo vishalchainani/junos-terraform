@@ -1,46 +1,32 @@
-system:
-  syslog:
-    file:
-    - contents:
-      - any: true
-        name: any
-      name: messages
-  license:
-    autoupdate:
-      url:
-      - name: https://ae1.juniper.net/junos/key_retrieval
-version: 18.2R3.4
-interfaces:
-  interface:
-  - unit:
-    - vlan_id: '1'
-      name: '1'
-      description: '*** to dc1-borderleaf1 vlan 1 ***'
-    - vlan_id: '2'
-      name: '2'
-      description: '*** to dc1-borderleaf1 vlan 2 ***'
-    - vlan_id: '3'
-      name: '3'
-      description: '*** to dc1-borderleaf1 vlan 3 ***'
-    vlan_tagging: true
-    name: ge-0/0/0
-  - unit:
-    - vlan_id: '1'
-      name: '1'
-      description: '*** to dc1-borderleaf2 vlan 1 ***'
-    - vlan_id: '2'
-      name: '2'
-      description: '*** to dc1-borderleaf2 vlan 2 ***'
-    - vlan_id: '3'
-      name: '3'
-      description: '*** to dc1-borderleaf2 vlan 3 ***'
-    vlan_tagging: true
-    name: ge-0/0/1
-  - unit:
-    - name: '0'
-      description: '*** management ***'
-    name: fxp0
+policy_options:
+  policy_statement:
+  - name: ospf-default
+    term:
+    - name: '1'
+      from:
+        route_filter:
+        - address: 0.0.0.0/0
+          exact: true
+          accept: true
 security:
+  screen:
+    ids_option:
+    - name: untrust-screen
+      icmp:
+        ping_death: true
+      ip:
+        source_route_option: true
+        tear_drop: true
+      tcp:
+        syn_flood:
+          alarm_threshold: '1024'
+          attack_threshold: '200'
+          source_threshold: '1024'
+          destination_threshold: '2048'
+          undocumented:
+            queue_size: '2000'
+          timeout: '20'
+        land: true
   policies:
     policy:
     - from_zone_name: trust
@@ -48,9 +34,12 @@ security:
       policy:
       - name: default-permit
         match:
-          source_address: any
-          destination_address: any
-          application: any
+          source_address:
+          - any
+          destination_address:
+          - any
+          application:
+          - any
         then:
           permit: ''
     - from_zone_name: trust
@@ -58,9 +47,12 @@ security:
       policy:
       - name: default-permit
         match:
-          source_address: any
-          destination_address: any
-          application: any
+          source_address:
+          - any
+          destination_address:
+          - any
+          application:
+          - any
         then:
           permit: ''
     - from_zone_name: VRF_10001
@@ -68,9 +60,12 @@ security:
       policy:
       - name: default-permit
         match:
-          source_address: any
-          destination_address: any
-          application: any
+          source_address:
+          - any
+          destination_address:
+          - any
+          application:
+          - any
         then:
           permit: ''
     - from_zone_name: VRF_10002
@@ -78,9 +73,12 @@ security:
       policy:
       - name: default-permit
         match:
-          source_address: any
-          destination_address: any
-          application: any
+          source_address:
+          - any
+          destination_address:
+          - any
+          application:
+          - any
         then:
           permit: ''
     - from_zone_name: VRF_10002
@@ -88,9 +86,12 @@ security:
       policy:
       - name: default-permit
         match:
-          source_address: any
-          destination_address: any
-          application: any
+          source_address:
+          - any
+          destination_address:
+          - any
+          application:
+          - any
         then:
           permit: ''
     - from_zone_name: VRF_10003
@@ -98,9 +99,12 @@ security:
       policy:
       - name: default-permit
         match:
-          source_address: any
-          destination_address: any
-          application: any
+          source_address:
+          - any
+          destination_address:
+          - any
+          application:
+          - any
         then:
           permit: ''
   zones:
@@ -141,37 +145,10 @@ security:
       interfaces:
       - name: ge-0/0/0.3
       - name: ge-0/0/1.3
-  screen:
-    ids_option:
-    - name: untrust-screen
-      icmp:
-        ping_death: true
-      ip:
-        source_route_option: true
-        tear_drop: true
-      tcp:
-        syn_flood:
-          alarm_threshold: '1024'
-          attack_threshold: '200'
-          source_threshold: '1024'
-          destination_threshold: '2048'
-          undocumented:
-            queue_size: '2000'
-          timeout: '20'
-        land: true
   log:
-    mode: stream
     report: ''
-policy_options:
-  policy_statement:
-  - name: ospf-default
-    term:
-    - name: '1'
-      from:
-        route_filter:
-        - address: 0.0.0.0/0
-          exact: true
-          accept: true
+    mode: stream
+version: 18.2R3.4
 routing_instances:
   instance:
   - name: fabric
@@ -190,7 +167,8 @@ routing_instances:
           discard: true
     protocols:
       ospf:
-        export: ospf-default
+        export:
+        - ospf-default
         area:
         - name: 0.0.0.0
           interface:
@@ -200,4 +178,45 @@ routing_instances:
           - name: ge-0/0/1.2
           - name: ge-0/0/0.3
           - name: ge-0/0/1.3
+system:
+  license:
+    autoupdate:
+      url:
+      - name: https://ae1.juniper.net/junos/key_retrieval
+  syslog:
+    file:
+    - contents:
+      - any: true
+        name: any
+      name: messages
+interfaces:
+  interface:
+  - unit:
+    - description: '*** to dc1-borderleaf1 vlan 1 ***'
+      name: '1'
+      vlan_id: '1'
+    - description: '*** to dc1-borderleaf1 vlan 2 ***'
+      name: '2'
+      vlan_id: '2'
+    - description: '*** to dc1-borderleaf1 vlan 3 ***'
+      name: '3'
+      vlan_id: '3'
+    name: ge-0/0/0
+    vlan_tagging: true
+  - unit:
+    - description: '*** to dc1-borderleaf2 vlan 1 ***'
+      name: '1'
+      vlan_id: '1'
+    - description: '*** to dc1-borderleaf2 vlan 2 ***'
+      name: '2'
+      vlan_id: '2'
+    - description: '*** to dc1-borderleaf2 vlan 3 ***'
+      name: '3'
+      vlan_id: '3'
+    name: ge-0/0/1
+    vlan_tagging: true
+  - unit:
+    - description: '*** management ***'
+      name: '0'
+    name: fxp0
 _merge_directive: merge_recursive

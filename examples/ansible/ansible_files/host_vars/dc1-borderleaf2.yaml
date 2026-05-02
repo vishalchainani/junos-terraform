@@ -91,7 +91,8 @@ interfaces:
   _merge_directive: merge_recursive
 policy_options:
   community:
-  - members: '65507:1'
+  - members:
+    - '65507:1'
     name: dc1-borderleaf2
   policy_statement:
   - term:
