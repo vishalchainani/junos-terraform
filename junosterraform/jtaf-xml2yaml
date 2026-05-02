@@ -906,11 +906,6 @@ dc1-spine2
 [firewall]
 dc1-firewall1
 dc1-firewall2
-
-[switch:children]
-borderleaf
-leaf
-spine
 """
 
 
