@@ -875,46 +875,6 @@ def load_inventory_sections(inventory_path: str) -> dict[str, Any]:
 
     return result
 
-
-GROUPING_HOSTS_SAMPLE = """[all]
-dc1-borderleaf1
-dc1-borderleaf2
-dc1-firewall1
-dc1-firewall2
-dc1-leaf1
-dc1-leaf2
-dc1-leaf3
-dc1-spine1
-dc1-spine2
-
-[switch]
-dc1-borderleaf1
-dc1-borderleaf2
-dc1-leaf1
-dc1-leaf2
-dc1-leaf3
-dc1-spine1
-dc1-spine2
-
-[borderleaf]
-dc1-borderleaf1
-dc1-borderleaf2
-
-[leaf]
-dc1-leaf1
-dc1-leaf2
-dc1-leaf3
-
-[spine]
-dc1-spine1
-dc1-spine2
-
-[firewall]
-dc1-firewall1
-dc1-firewall2
-"""
-
-
 def _parse_grouping_hosts_file(grouping_hosts_file: str) -> tuple[dict[str, Any], list[str]]:
     """Parse grouping.hosts file and return parse errors with line context."""
     result = {"all": [], "hosts": {}, "children": {}}
@@ -1140,26 +1100,6 @@ def _build_user_groups_from_inventory(
     return common_groups, parent_map, host_to_leaf, errors
 
 
-def resolve_grouping_hosts_file_path(args: argparse.Namespace) -> str:
-    """Resolve grouping.hosts path from args or optional interactive fallback."""
-    if args.grouping_hosts_file:
-        return args.grouping_hosts_file
-
-    if not args.interactive:
-        raise SystemExit(
-            "Missing required --grouping-hosts-file. "
-            "Use --grouping-hosts-file <path> or --interactive for prompt fallback."
-        )
-
-    print("Sample grouping.hosts format:\n")
-    print(GROUPING_HOSTS_SAMPLE)
-    while True:
-        candidate = input("Enter path to grouping.hosts: ").strip()
-        if candidate:
-            return candidate
-        print("Path cannot be empty.")
-
-
 def build_hierarchical_inventory_groups(
     parent_map: dict[str, Optional[str]],
     host_to_leaf_group: dict[str, str],
@@ -1330,14 +1270,8 @@ def main() -> None:
     )
     parser.add_argument(
         "--grouping-hosts-file",
-        default=None,
-        help="Path to user-defined grouping.hosts file. Required unless --interactive is used.",
-    )
-    parser.add_argument(
-        "--interactive",
-        action="store_true",
-        default=False,
-        help="Optional prompt fallback to enter grouping.hosts path.",
+        required=True,
+        help="Path to user-defined grouping.hosts file.",
     )
     parser.add_argument(
         "--strict-grouping-known-hosts",
@@ -1378,7 +1312,7 @@ def main() -> None:
     cached_payload_by_host.update(full_payload_by_host)
     all_hostnames = sorted(cached_payload_by_host.keys())
 
-    grouping_hosts_file = resolve_grouping_hosts_file_path(args)
+    grouping_hosts_file = args.grouping_hosts_file
     parsed_inventory, parse_errors = _parse_grouping_hosts_file(grouping_hosts_file)
     if parse_errors:
         raise SystemExit("grouping.hosts parsing failed:\n- " + "\n- ".join(parse_errors))
