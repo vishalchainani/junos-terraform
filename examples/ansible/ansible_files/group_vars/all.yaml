@@ -1,44 +1,7 @@
-chassis:
-  aggregated_devices:
-    ethernet:
-      device_count: '24'
-interfaces: {}
-routing_options:
-  static:
-    route:
-    - name: 0.0.0.0/0
-      next_hop:
-      - 100.123.0.1
-protocols:
-  lldp:
-    interface:
-    - name: all
 system:
-  syslog:
-    file:
-    - name: messages
-      contents:
-      - name: any
-      - name: authorization
-        info: true
-    - name: interactive-commands
-      contents:
-      - any: true
-        name: interactive-commands
-    user:
-    - contents:
-      - emergency: true
-        name: any
-      name: '*'
   root_authentication:
     encrypted_password: $1$DbZ1Q3pj$s48cZytjsmSJRUJAf4LdM.
   login:
-    user:
-    - authentication:
-        encrypted_password: $1$a31gJmWG$h9ohikT1ajySf/tVH.gmv1
-      class: super-user
-      name: jcluser
-      uid: '2000'
     message: '***********************************************************************\nThis
       system is restricted to __________, authorized users for legitimate\nbusiness
       purposes only. All activity on the system will be logged and\nis subject to
@@ -48,30 +11,67 @@ system:
       and possible\nprosecution. __________ reserves the right to investigate, refer
       for\nprosecution and pursue monetary damages in civil actions in the event\nof
       unauthorized access.\n***********************************************************************\n'
+    user:
+    - authentication:
+        encrypted_password: $1$a31gJmWG$h9ohikT1ajySf/tVH.gmv1
+      class: super-user
+      name: jcluser
+      uid: '2000'
   services:
     ssh:
       root_login: allow
-    rest:
-      http:
-        port: '3000'
-      enable_explorer: true
     extension_service:
-      notification:
-        allow_clients:
-          address:
-          - 0.0.0.0/0
       request_response:
         grpc:
           undocumented:
             skip_authentication: null
           max_connections: '30'
+      notification:
+        allow_clients:
+          address:
+          - 0.0.0.0/0
+    rest:
+      http:
+        port: '3000'
+      enable_explorer: true
     netconf:
       ssh: ''
+  syslog:
+    user:
+    - contents:
+      - emergency: true
+        name: any
+      name: '*'
+    file:
+    - name: messages
+      contents:
+      - name: any
+      - info: true
+        name: authorization
+    - name: interactive-commands
+      contents:
+      - any: true
+        name: interactive-commands
+protocols:
+  lldp:
+    interface:
+    - name: all
+routing_options:
+  static:
+    route:
+    - name: 0.0.0.0/0
+      next_hop:
+      - 100.123.0.1
+interfaces: {}
 policy_options: {}
 snmp:
+  contact: aburston@juniper.net
+  location: JCL Labs
   community:
   - authorization: read-only
     name: public
-  location: JCL Labs
-  contact: aburston@juniper.net
+chassis:
+  aggregated_devices:
+    ethernet:
+      device_count: '24'
 _merge_directive: merge_recursive

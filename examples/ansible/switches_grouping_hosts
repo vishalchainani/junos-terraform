@@ -7,15 +7,6 @@ dc1-leaf3
 dc1-spine1
 dc1-spine2
 
-[switch]
-dc1-borderleaf1
-dc1-borderleaf2
-dc1-leaf1
-dc1-leaf2
-dc1-leaf3
-dc1-spine1
-dc1-spine2
-
 [borderleaf]
 dc1-borderleaf1
 dc1-borderleaf2
@@ -29,7 +20,3 @@ dc1-leaf3
 dc1-spine1
 dc1-spine2
 
-[switch:children]
-borderleaf
-leaf
-spine
