@@ -284,7 +284,7 @@ jtaf-yang2ansible -p <path-to-common> <path-to-yang-files> -x <xml-config(s)> -t
 
 Example:
 ```
-jtaf-yang2ansible -p examples/yang/18.2/18.2R3/common examples/yang/18.2/18.2R3/junos-qfx/conf/*.yang -x examples/evpn-vxlan-dc/dc1/*spine*.xml -t qfx
+jtaf-yang2ansible -p examples/yang/18.2/18.2R3/common examples/yang/18.2/18.2R3/junos-qfx/conf/*.yang -x examples/evpn-vxlan-dc/dc1/*spine*.xml -t vqfx
 ```
 
 Notes:
@@ -292,12 +292,6 @@ Notes:
 - Output directory: ansible-provider-junos-<type>/ containing roles/<type>_role/ (tasks/templates), jtaf-playbook.yml (connection: local), host_vars/, group_vars/, configs/, trimmed_schema.json.
 - Run the generated playbook in check/diff mode to verify rendered configs without applying:
 	ansible-playbook -i "localhost," jtaf-playbook.yml --check --diff
-
-Merge behavior for shared + host-specific vars:
-- Variables are organized hierarchically: global defaults in `group_vars/all.yml` -> device-type shared values in `group_vars/<type>/all.yml` -> host-specific deltas in `host_vars/<host>.yaml`.
-- Generated role tasks merge variables from this hierarchy using Ansible's `combine()` filter with `recursive=True` and `list_merge='replace'`.
-- Optional `_merge_directive` meta-instructions in YAML allow per-key control over merge behavior (e.g., `_merge_directive: append` for lists).
-- See [HIERARCHICAL_GROUPS_WITH_DIRECTIVES.md](./HIERARCHICAL_GROUPS_WITH_DIRECTIVES.md) for detailed documentation.
 
 ---
 
@@ -317,32 +311,22 @@ Important behavior:
 
 Usage:
 ```
-jtaf-xml2yaml -j <trimmed_schema.json> -x <config1.xml> [<config2.xml> ...] -d <output-dir> -t <device-type>
+jtaf-xml2yaml -j <trimmed_schema.json> -x <config1.xml> [<config2.xml> ...] -d <output-dir> --grouping-hosts-file <grouping_hosts_file>
 
-# Optional: write device group vars as delta vs group_vars/all.yml
-jtaf-xml2yaml -j <trimmed_schema.json> -x <config1.xml> [<config2.xml> ...] -d <output-dir> -t <device-type> --device-group-delta
-
-# Write inventory/vars into a separate playbook workspace
-jtaf-xml2yaml -j <trimmed_schema.json> -x <config1.xml> [<config2.xml> ...] -d <role-output-dir> -t <device-type> \
-  --hosts-file <playbook-dir>/inventory/hosts.ini \
-  --group-vars-dir <playbook-dir>/group_vars \
-  --host-vars-dir <playbook-dir>/host_vars
 ```
 
 Example:
 ```
-jtaf-xml2yaml -j ansible-provider-junos-qfx/trimmed_schema.json \
-	-x examples/evpn-vxlan-dc/dc1/dc1-leaf1.xml examples/evpn-vxlan-dc/dc1/dc1-leaf2.xml \
-  -d ansible-provider-junos-qfx \
-  -t qfx
+jtaf-xml2yaml -j ansible-provider-junos-vqfx/trimmed_schema.json \
+	-x examples/evpn-vxlan-dc/dc1/dc1-leaf1.xml examples/evpn-vxlan-dc/dc1/dc1-leaf1.xml \
+  -d ansible_files \
+  --grouping-hosts-file switches_grouping_hosts
 ```
 
 Output:
 - Creates `host_vars/<hostname>.yaml` for every XML file provided (hostname is file base name or `system/host-name` from XML).
 - Maintains `group_vars/<type>/all.yml` for per-type shared keys.
 - Maintains `group_vars/all.yml` for keys shared across all discovered device types.
-- Optional `--device-group-delta` writes `group_vars/<type>/all.yml` as a delta against `group_vars/all.yml`.
-- In delta mode, empty per-type delta files are omitted.
 - Writes/updates inventory hosts file with `[all]` and `[<type>]` groups.
 
 This output feeds into the Ansible role/playbook created by jtaf-ansible/jtaf-yang2ansible.
