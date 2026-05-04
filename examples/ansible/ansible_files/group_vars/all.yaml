@@ -2,12 +2,34 @@ chassis:
   aggregated_devices:
     ethernet:
       device_count: '24'
-policy_options: {}
+interfaces: {}
+routing_options:
+  static:
+    route:
+    - name: 0.0.0.0/0
+      next_hop:
+      - 100.123.0.1
 protocols:
   lldp:
     interface:
     - name: all
 system:
+  syslog:
+    file:
+    - name: messages
+      contents:
+      - name: any
+      - name: authorization
+        info: true
+    - name: interactive-commands
+      contents:
+      - any: true
+        name: interactive-commands
+    user:
+    - contents:
+      - emergency: true
+        name: any
+      name: '*'
   root_authentication:
     encrypted_password: $1$DbZ1Q3pj$s48cZytjsmSJRUJAf4LdM.
   login:
@@ -27,51 +49,29 @@ system:
       for\nprosecution and pursue monetary damages in civil actions in the event\nof
       unauthorized access.\n***********************************************************************\n'
   services:
+    ssh:
+      root_login: allow
     rest:
-      enable_explorer: true
       http:
         port: '3000'
+      enable_explorer: true
     extension_service:
-      request_response:
-        grpc:
-          max_connections: '30'
-          undocumented:
-            skip_authentication: null
       notification:
         allow_clients:
           address:
           - 0.0.0.0/0
+      request_response:
+        grpc:
+          undocumented:
+            skip_authentication: null
+          max_connections: '30'
     netconf:
       ssh: ''
-    ssh:
-      root_login: allow
-  syslog:
-    user:
-    - contents:
-      - emergency: true
-        name: any
-      name: '*'
-    file:
-    - name: messages
-      contents:
-      - name: any
-      - info: true
-        name: authorization
-    - name: interactive-commands
-      contents:
-      - any: true
-        name: interactive-commands
+policy_options: {}
 snmp:
-  location: JCL Labs
-  contact: aburston@juniper.net
   community:
   - authorization: read-only
     name: public
-interfaces: {}
-routing_options:
-  static:
-    route:
-    - name: 0.0.0.0/0
-      next_hop:
-      - 100.123.0.1
+  location: JCL Labs
+  contact: aburston@juniper.net
 _merge_directive: merge_recursive

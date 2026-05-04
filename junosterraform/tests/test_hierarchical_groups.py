@@ -164,6 +164,64 @@ def test_keyed_list_intersection_and_subtraction(xml2yaml_mod):
     }
 
 
+def test_bool_field_is_not_used_as_list_identity_key(xml2yaml_mod):
+    items = [
+        [{"community_name": "dc1-leaf1", "add": True}],
+        [{"community_name": "dc1-leaf2", "add": True}],
+    ]
+
+    assert xml2yaml_mod._infer_identity_key_for_dict_lists(items) == "community_name"
+
+    left = {
+        "policy_options": {
+            "policy_statement": [{
+                "name": "IPCLOS_BGP_EXP",
+                "term": [{
+                    "name": "loopback",
+                    "then": {
+                        "community": [{
+                            "community_name": "dc1-leaf1",
+                            "add": True,
+                        }]
+                    },
+                }],
+            }]
+        }
+    }
+    right = {
+        "policy_options": {
+            "policy_statement": [{
+                "name": "IPCLOS_BGP_EXP",
+                "term": [{
+                    "name": "loopback",
+                    "then": {
+                        "community": [{
+                            "community_name": "dc1-leaf2",
+                            "add": True,
+                        }]
+                    },
+                }],
+            }]
+        }
+    }
+
+    shared = xml2yaml_mod.intersect_values(left, right)
+    assert shared == {
+        "policy_options": {
+            "policy_statement": [{
+                "name": "IPCLOS_BGP_EXP",
+                "term": [{
+                    "name": "loopback",
+                    "then": {},
+                }],
+            }]
+        }
+    }
+
+    left_delta = xml2yaml_mod.subtract_common(left, shared)
+    assert left_delta == left
+
+
 def test_derive_provider_key_from_role_directory(xml2yaml_mod, tmp_path):
     schema_file = _write_provider(
         tmp_path,

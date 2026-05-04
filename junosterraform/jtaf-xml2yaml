@@ -187,7 +187,11 @@ def _infer_identity_key_for_dict_lists(
                     valid = False
                     break
                 key_val = item[candidate]
-                if key_val is None or not _is_scalar(key_val):
+                if (
+                    key_val is None
+                    or not _is_scalar(key_val)
+                    or isinstance(key_val, bool)
+                ):
                     valid = False
                     break
                 token = _value_key(key_val)

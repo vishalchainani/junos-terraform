@@ -90,8 +90,8 @@ policy_options:
   - term:
     - then:
         community:
-        - community_name: dc1-leaf1
-          add: true
+        - add: true
+          community_name: dc1-leaf1
       name: loopback
     name: IPCLOS_BGP_EXP
   _merge_list_directives:

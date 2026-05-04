@@ -1,3 +1,99 @@
+version: 18.1R3-S5.3
+interfaces:
+  interface:
+  - name: xe-0/0/0
+    description: '*** to dc1-borderleaf1 ***'
+    unit:
+    - name: '0'
+  - name: xe-0/0/1
+    description: '*** to dc1-borderleaf2 ***'
+    unit:
+    - name: '0'
+  - name: xe-0/0/2
+    description: '*** to dc1-leaf1 ***'
+    unit:
+    - name: '0'
+  - name: xe-0/0/3
+    description: '*** to dc1-leaf2 ***'
+    unit:
+    - name: '0'
+  - name: xe-0/0/4
+    description: '*** to dc1-leaf3 ***'
+    unit:
+    - name: '0'
+  - name: em0
+    unit:
+    - name: '0'
+      description: '*** management ***'
+  - name: em1
+    unit:
+    - description: '*** to pfe ***'
+      family:
+        inet:
+          address:
+          - name: 169.254.0.2/24
+      name: '0'
+  - name: lo0
+    unit:
+    - name: '0'
+      description: '*** loopback ***'
+routing_options:
+  forwarding_table:
+    export:
+    - PFE-LB
+    ecmp_fast_reroute: true
+forwarding_options:
+  storm_control_profiles:
+  - all: ''
+    name: default
+protocols:
+  bgp:
+    group:
+    - allow:
+      - 10.30.100.0/24
+      family:
+        evpn:
+          signaling: ''
+      type: internal
+      name: EVPN_iBGP
+      multipath: ''
+      local_as:
+        as_number: '65200'
+    - export:
+      - IPCLOS_BGP_EXP
+      type: external
+      vpn_apply_export: true
+      bfd_liveness_detection:
+        minimum_interval: '1000'
+        multiplier: '3'
+      name: IPCLOS_eBGP
+      import:
+      - IPCLOS_BGP_IMP
+      multipath:
+        multiple_as: true
+      mtu_discovery: true
+  igmp_snooping:
+    vlan:
+    - name: default
+system:
+  syslog:
+    file:
+    - contents:
+      - notice: true
+        name: any
+      name: messages
+  extensions:
+    providers:
+    - license_type:
+      - deployment_scope:
+        - commercial
+        name: juniper
+      name: juniper
+    - license_type:
+      - deployment_scope:
+        - commercial
+        name: juniper
+      name: chef
 policy_options:
   policy_statement:
   - name: IPCLOS_BGP_EXP
@@ -9,8 +105,6 @@ policy_options:
       name: loopback
       then:
         accept: true
-        community:
-        - add: true
     - name: default
       then:
         reject: true
@@ -30,100 +124,4 @@ policy_options:
     then:
       load_balance:
         per_packet: true
-version: 18.1R3-S5.3
-protocols:
-  bgp:
-    group:
-    - allow:
-      - 10.30.100.0/24
-      family:
-        evpn:
-          signaling: ''
-      multipath: ''
-      type: internal
-      name: EVPN_iBGP
-      local_as:
-        as_number: '65200'
-    - bfd_liveness_detection:
-        multiplier: '3'
-        minimum_interval: '1000'
-      mtu_discovery: true
-      multipath:
-        multiple_as: true
-      vpn_apply_export: true
-      import:
-      - IPCLOS_BGP_IMP
-      type: external
-      export:
-      - IPCLOS_BGP_EXP
-      name: IPCLOS_eBGP
-  igmp_snooping:
-    vlan:
-    - name: default
-system:
-  extensions:
-    providers:
-    - license_type:
-      - deployment_scope:
-        - commercial
-        name: juniper
-      name: juniper
-    - license_type:
-      - deployment_scope:
-        - commercial
-        name: juniper
-      name: chef
-  syslog:
-    file:
-    - contents:
-      - notice: true
-        name: any
-      name: messages
-forwarding_options:
-  storm_control_profiles:
-  - all: ''
-    name: default
-interfaces:
-  interface:
-  - description: '*** to dc1-borderleaf1 ***'
-    unit:
-    - name: '0'
-    name: xe-0/0/0
-  - description: '*** to dc1-borderleaf2 ***'
-    unit:
-    - name: '0'
-    name: xe-0/0/1
-  - description: '*** to dc1-leaf1 ***'
-    unit:
-    - name: '0'
-    name: xe-0/0/2
-  - description: '*** to dc1-leaf2 ***'
-    unit:
-    - name: '0'
-    name: xe-0/0/3
-  - description: '*** to dc1-leaf3 ***'
-    unit:
-    - name: '0'
-    name: xe-0/0/4
-  - unit:
-    - description: '*** management ***'
-      name: '0'
-    name: em0
-  - unit:
-    - description: '*** to pfe ***'
-      family:
-        inet:
-          address:
-          - name: 169.254.0.2/24
-      name: '0'
-    name: em1
-  - unit:
-    - description: '*** loopback ***'
-      name: '0'
-    name: lo0
-routing_options:
-  forwarding_table:
-    export:
-    - PFE-LB
-    ecmp_fast_reroute: true
 _merge_directive: merge_recursive
