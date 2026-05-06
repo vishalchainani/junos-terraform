@@ -113,9 +113,7 @@ def elem_to_dict(
                 result[prepared_tag].append(child.text)
         elif elem_type == "leaf-list":
             # If the element is of type leaf-list, always create a list
-            if not result.get(prepared_tag):
-                result[prepared_tag] = []
-            result[prepared_tag].append(child.text)
+            result[prepared_tag] = child.text
         elif elem_type == "container":
             # If the element is of type container, always create a dict
             if len(child) > 0:
@@ -137,8 +135,10 @@ def elem_to_dict(
     return result
 
 
+META_KEY = "meta"
+REGISTRY_KEY = "jtaf_registry"
+PROVIDERS_KEY = "providers"
 ALL_YAML = "all.yaml"
-HOST_PAYLOAD_CACHE_FILE = ".jtaf_host_payloads.json"
 
 
 def _plain_group_name(name: str) -> str:
@@ -341,7 +341,7 @@ def _collect_paths(value: Any, prefix: str = "") -> set[str]:
 
     if isinstance(value, dict):
         for key, nested in value.items():
-            if key.startswith("_merge"):
+            if key == META_KEY or key.startswith("_merge"):
                 continue
             next_prefix = f"{prefix}.{key}" if prefix else key
             paths.add(next_prefix)
@@ -370,7 +370,7 @@ def _collect_leaf_path_values(
 
     if isinstance(value, dict):
         for key, nested in value.items():
-            if key.startswith("_merge"):
+            if key == META_KEY or key.startswith("_merge"):
                 continue
             result.update(_collect_leaf_path_values(nested, prefix + (key,)))
         return result
@@ -435,7 +435,7 @@ def remove_merge_meta_keys(value: Any) -> Any:
     if isinstance(value, dict):
         cleaned: dict[str, Any] = {}
         for key, nested in value.items():
-            if key.startswith("_merge"):
+            if key == META_KEY or key.startswith("_merge"):
                 continue
             cleaned[key] = remove_merge_meta_keys(nested)
         return cleaned
@@ -544,35 +544,6 @@ def load_yaml_file(input_path: str) -> dict[str, Any]:
     return data if isinstance(data, dict) else {}
 
 
-def load_host_payload_cache(directory: str) -> dict[str, dict[str, Any]]:
-    """Load cached host payloads from output directory."""
-    cache_path = os.path.join(directory, HOST_PAYLOAD_CACHE_FILE)
-    if not os.path.exists(cache_path):
-        return {}
-
-    try:
-        with open(cache_path, "r") as f:
-            raw = json.load(f)
-    except (OSError, ValueError, json.JSONDecodeError):
-        return {}
-
-    if not isinstance(raw, dict):
-        return {}
-
-    return {
-        str(hostname): remove_merge_meta_keys(payload)
-        for hostname, payload in raw.items()
-        if isinstance(payload, dict)
-    }
-
-
-def write_host_payload_cache(directory: str, payload_by_host: dict[str, dict[str, Any]]) -> None:
-    """Persist cached host payloads for multi-run global baseline computation."""
-    cache_path = os.path.join(directory, HOST_PAYLOAD_CACHE_FILE)
-    with open(cache_path, "w") as f:
-        json.dump(payload_by_host, f, indent=2, sort_keys=True)
-
-
 def deep_merge_dicts(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
     """Deep merge two dictionaries with override precedence."""
     merged = copy.deepcopy(base)
@@ -610,6 +581,138 @@ def parse_host_entries(
     return [parse_xml_to_payload(xml_file, schema) for xml_file in xml_files]
 
 
+def derive_provider_key(trimmed_json_file: str) -> str:
+    """Derive provider-key from the single role directory inside provider roles/."""
+    provider_root = os.path.dirname(os.path.abspath(trimmed_json_file))
+    roles_root = os.path.join(provider_root, "roles")
+    if not os.path.isdir(roles_root):
+        raise ValueError(
+            f"Unable to derive provider-key: missing roles directory next to {trimmed_json_file}"
+        )
+
+    role_dirs = sorted(
+        entry
+        for entry in os.listdir(roles_root)
+        if os.path.isdir(os.path.join(roles_root, entry))
+    )
+    if len(role_dirs) != 1:
+        raise ValueError(
+            "Unable to derive provider-key: expected exactly one role directory under "
+            f"{roles_root}, found {len(role_dirs)}"
+        )
+    return role_dirs[0]
+
+
+def split_meta_payload(payload: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Split payload into meta and non-meta sections."""
+    if not isinstance(payload, dict):
+        return {}, {}
+    meta = payload.get(META_KEY, {})
+    non_meta = {key: copy.deepcopy(value) for key, value in payload.items() if key != META_KEY}
+    return meta if isinstance(meta, dict) else {}, non_meta
+
+
+def _normalize_int(value: Any) -> Optional[int]:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def normalize_registry(raw_registry: Any) -> dict[str, Any]:
+    """Normalize registry metadata loaded from YAML."""
+    registry: dict[str, Any] = {"version": 1, "providers": {}}
+    if not isinstance(raw_registry, dict):
+        return registry
+
+    version = _normalize_int(raw_registry.get("version"))
+    if version is not None:
+        registry["version"] = version
+
+    raw_providers = raw_registry.get(PROVIDERS_KEY, {})
+    if not isinstance(raw_providers, dict):
+        return registry
+
+    normalized_providers: dict[str, Any] = {}
+    for provider_key, raw_entry in raw_providers.items():
+        if not isinstance(raw_entry, dict):
+            continue
+        entry: dict[str, Any] = {}
+        managed_hosts = raw_entry.get("managed_hosts", [])
+        if isinstance(managed_hosts, list):
+            entry["managed_hosts"] = [str(host) for host in managed_hosts]
+
+        raw_range = raw_entry.get("group_range")
+        if isinstance(raw_range, dict):
+            start = _normalize_int(raw_range.get("start"))
+            end = _normalize_int(raw_range.get("end"))
+            if start is not None and end is not None:
+                entry["group_range"] = {"start": start, "end": end}
+
+        group_names = raw_entry.get("group_names", [])
+        if isinstance(group_names, list):
+            entry["group_names"] = [str(name) for name in group_names]
+
+        group_paths = raw_entry.get("group_paths", {})
+        if isinstance(group_paths, dict):
+            entry["group_paths"] = {
+                str(name): str(path)
+                for name, path in group_paths.items()
+                if isinstance(path, str)
+            }
+
+        root_group = raw_entry.get("root_group")
+        if isinstance(root_group, str):
+            entry["root_group"] = root_group
+
+        shared_payload = raw_entry.get("shared_payload", {})
+        if isinstance(shared_payload, dict):
+            entry["shared_payload"] = copy.deepcopy(shared_payload)
+
+        normalized_providers[str(provider_key)] = entry
+
+    registry[PROVIDERS_KEY] = normalized_providers
+    return registry
+
+
+def load_shared_all_state(group_vars_root: str) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Load shared all.yaml and split into payload and registry metadata."""
+    all_file = os.path.join(group_vars_root, ALL_YAML)
+    payload = load_yaml_file(all_file)
+    meta, non_meta = split_meta_payload(payload)
+    registry = normalize_registry(meta.get(REGISTRY_KEY, {}))
+    return non_meta, registry
+
+
+def write_shared_all_state(
+    group_vars_root: str,
+    shared_payload: dict[str, Any],
+    registry: dict[str, Any],
+) -> None:
+    """Persist shared all.yaml payload and registry metadata."""
+    payload = copy.deepcopy(shared_payload)
+    payload[META_KEY] = {REGISTRY_KEY: registry}
+    write_yaml_file(os.path.join(group_vars_root, ALL_YAML), payload)
+
+
+def build_global_shared_payload_from_registry(registry: dict[str, Any]) -> dict[str, Any]:
+    """Build all-provider shared payload from registry-stored provider payloads."""
+    provider_payloads: list[dict[str, Any]] = []
+    for provider_key in sorted(registry.get(PROVIDERS_KEY, {}).keys()):
+        payload = registry[PROVIDERS_KEY][provider_key].get("shared_payload", {})
+        if isinstance(payload, dict) and payload:
+            provider_payloads.append(remove_merge_meta_keys(payload))
+
+    if not provider_payloads:
+        return {}
+
+    shared = copy.deepcopy(provider_payloads[0])
+    for payload in provider_payloads[1:]:
+        merged = intersect_values(shared, payload)
+        shared = merged if isinstance(merged, dict) else {}
+    return shared if isinstance(shared, dict) else {}
+
+
 def derive_host_delta_entries(
     full_payload_by_host: dict[str, dict[str, Any]],
     global_shared_payload: dict[str, Any],
@@ -629,6 +732,146 @@ def _build_children_by_parent(parent_map: dict[str, Optional[str]]) -> dict[Opti
     for group_name, parent in parent_map.items():
         children.setdefault(parent, []).append(group_name)
     return children
+
+
+def derive_common_host_groups(
+    host_var_entries: list[tuple[str, dict[str, Any]]],
+    min_hosts: int = 2,
+    max_groups: int = 16,
+    min_benefit_score: int = 1,
+    min_new_paths: int = 0,
+) -> dict[str, list[str]]:
+    """Derive deterministic common host groups from shared leaf path/value support.
+
+    Returns internal group tokens as keys (for example ``group:candidate1``) mapped
+    to sorted host lists.
+    """
+    if not host_var_entries:
+        return {}
+
+    hostnames = [hostname for hostname, _payload in host_var_entries]
+    all_hosts = sorted(set(hostnames))
+    if not all_hosts:
+        return {}
+
+    token_support: dict[str, set[str]] = {}
+    for hostname, payload in host_var_entries:
+        leaf_map = _collect_leaf_path_values(payload)
+        for path, value in leaf_map.items():
+            token = f"{'.'.join(path)}={_value_key(value)}"
+            token_support.setdefault(token, set()).add(hostname)
+
+    set_to_tokens: dict[frozenset[str], set[str]] = {}
+    for token, members in token_support.items():
+        if len(members) < min_hosts:
+            continue
+        key = frozenset(members)
+        set_to_tokens.setdefault(key, set()).add(token)
+
+    # Always include a root group when possible.
+    if len(all_hosts) >= min_hosts:
+        all_key = frozenset(all_hosts)
+        set_to_tokens.setdefault(all_key, set()).add("__all__")
+
+    ranked: list[tuple[frozenset[str], int, int]] = []
+    for members_set, tokens in set_to_tokens.items():
+        if len(members_set) < min_hosts:
+            continue
+        benefit_score = len(tokens)
+        if benefit_score < min_benefit_score:
+            continue
+        new_paths_score = max(0, benefit_score - 1)
+        if new_paths_score < min_new_paths:
+            continue
+        ranked.append((members_set, len(members_set), benefit_score))
+
+    ranked.sort(key=lambda item: (-item[1], -item[2], sorted(item[0])))
+
+    groups: dict[str, list[str]] = {}
+    for members_set, _size, _benefit in ranked[:max_groups]:
+        group_name = f"group:candidate{len(groups) + 1}"
+        groups[group_name] = sorted(members_set)
+
+    return groups
+
+
+def _infer_parent_map_from_groups(common_groups: dict[str, list[str]]) -> dict[str, Optional[str]]:
+    """Infer parent links from strict host-set containment."""
+    parent_map: dict[str, Optional[str]] = {name: None for name in common_groups.keys()}
+    for group_name, members in common_groups.items():
+        group_set = set(members)
+        candidates: list[str] = []
+        for other_name, other_members in common_groups.items():
+            if other_name == group_name:
+                continue
+            other_set = set(other_members)
+            if group_set < other_set:
+                candidates.append(other_name)
+        if candidates:
+            candidates.sort(key=lambda name: (len(common_groups[name]), name))
+            parent_map[group_name] = candidates[0]
+    return parent_map
+
+
+def collapse_daisy_chains(
+    common_groups: dict[str, list[str]],
+    parent_map: dict[str, Optional[str]],
+    payload_by_hostname: dict[str, dict[str, Any]],
+    max_single_child_chain: int = 2,
+    min_unique_paths: int = 1,
+) -> tuple[dict[str, list[str]], dict[str, Optional[str]]]:
+    """Collapse low-value single-child chain nodes based on unique payload paths."""
+    if max_single_child_chain < 2:
+        return dict(common_groups), dict(parent_map)
+
+    reduced_groups = dict(common_groups)
+    reduced_parent_map = dict(parent_map)
+
+    changed = True
+    while changed:
+        changed = False
+        children_by_parent = _build_children_by_parent(reduced_parent_map)
+
+        for group_name in sorted(list(reduced_parent_map.keys())):
+            parent = reduced_parent_map.get(group_name)
+            children = children_by_parent.get(group_name, [])
+            if parent is None or len(children) != 1:
+                continue
+
+            members = reduced_groups.get(group_name, [])
+            parent_members = reduced_groups.get(parent, [])
+            if not members or not parent_members:
+                continue
+
+            group_payload = build_group_shared_payload([
+                payload_by_hostname[host]
+                for host in members
+                if host in payload_by_hostname
+            ])
+            parent_payload = build_group_shared_payload([
+                payload_by_hostname[host]
+                for host in parent_members
+                if host in payload_by_hostname
+            ])
+
+            unique = subtract_common(group_payload, parent_payload)
+            if unique is _OMIT:
+                unique_paths_count = 0
+            else:
+                compacted = compact_payload(unique)
+                unique_paths_count = len(_collect_paths(compacted if compacted is not _OMIT else {}))
+
+            if unique_paths_count >= min_unique_paths:
+                continue
+
+            child = children[0]
+            reduced_parent_map[child] = parent
+            reduced_parent_map.pop(group_name, None)
+            reduced_groups.pop(group_name, None)
+            changed = True
+            break
+
+    return reduced_groups, reduced_parent_map
 
 
 def build_group_full_payloads(
@@ -757,7 +1000,7 @@ def build_group_delta_payloads(
     merge_profile: str,
     list_strategy_default: str,
 ) -> dict[str, dict[str, Any]]:
-    """Compute the default per-group delta payloads against parent ancestry baselines."""
+    """Compute strict deltas for groups against parent ancestry payloads."""
     group_deltas: dict[str, dict[str, Any]] = {}
     ordered_names = sorted(
         parent_map.keys(),
@@ -785,9 +1028,15 @@ def write_group_hierarchy_payloads(
     group_vars_root: str,
     parent_map: dict[str, Optional[str]],
     group_delta_payloads: dict[str, dict[str, Any]],
+    path_prefix: str = "",
 ) -> dict[str, str]:
     """Write group hierarchy directories with all.yaml payload files."""
     path_map = build_group_path_map(parent_map)
+    if path_prefix:
+        path_map = {
+            name: os.path.join(path_prefix, relative_path)
+            for name, relative_path in path_map.items()
+        }
     for group_name in sorted(path_map.keys(), key=lambda name: path_map[name]):
         output_path = os.path.join(group_vars_root, path_map[group_name], ALL_YAML)
         write_yaml_file(output_path, group_delta_payloads.get(group_name, {}))
@@ -874,6 +1123,7 @@ def load_inventory_sections(inventory_path: str) -> dict[str, Any]:
                 result["children"][current_name].append(stripped)
 
     return result
+
 
 def _parse_grouping_hosts_file(grouping_hosts_file: str) -> tuple[dict[str, Any], list[str]]:
     """Parse grouping.hosts file and return parse errors with line context."""
@@ -1063,27 +1313,6 @@ def _build_user_groups_from_inventory(
             parent = parent_of.get(parent)
         parent_map[group_name] = parent
 
-    # When users provide only host membership groups (no :children sections),
-    # infer a stable hierarchy from strict host-set containment.
-    for group_name in sorted(common_groups.keys()):
-        if parent_map.get(group_name) is not None:
-            continue
-        group_hosts = set(common_groups.get(group_name, []))
-        if not group_hosts:
-            continue
-
-        candidates = [
-            other_name
-            for other_name, other_hosts in common_groups.items()
-            if other_name != group_name
-            and group_hosts < set(other_hosts)
-        ]
-        if not candidates:
-            continue
-
-        candidates.sort(key=lambda name: (len(common_groups.get(name, [])), name))
-        parent_map[group_name] = candidates[0]
-
     children_by_parent = _build_children_by_parent(parent_map)
     leaves = [name for name in common_groups.keys() if not children_by_parent.get(name)]
     host_to_leaf: dict[str, str] = {}
@@ -1098,6 +1327,29 @@ def _build_user_groups_from_inventory(
         host_to_leaf[host] = candidates[0]
 
     return common_groups, parent_map, host_to_leaf, errors
+
+
+def _auto_grouping_from_host_payloads(
+    host_var_entries: list[tuple[str, dict[str, Any]]],
+) -> tuple[dict[str, Any], dict[str, list[str]], dict[str, Optional[str]], dict[str, str]]:
+    """Build deterministic grouping inventory and hierarchy when no grouping.hosts is provided."""
+    active_hostnames = sorted(hostname for hostname, _payload in host_var_entries)
+    common_groups = derive_common_host_groups(
+        host_var_entries,
+        min_hosts=2,
+        max_groups=max(4, len(active_hostnames) * 2),
+        min_benefit_score=1,
+        min_new_paths=0,
+    )
+
+    has_root = any(set(members) == set(active_hostnames) for members in common_groups.values())
+    if len(active_hostnames) >= 2 and not has_root:
+        common_groups[f"group:candidate{len(common_groups) + 1}"] = active_hostnames
+
+    parent_map = _infer_parent_map_from_groups(common_groups)
+    host_to_leaf = assign_leaf_group_per_host(common_groups, parent_map)
+    inventory = build_hierarchical_inventory_groups(parent_map, host_to_leaf)
+    return inventory, common_groups, parent_map, host_to_leaf
 
 
 def build_hierarchical_inventory_groups(
@@ -1125,49 +1377,6 @@ def build_hierarchical_inventory_groups(
         hosts_by_group[key] = sorted(set(hosts_by_group[key]))
 
     return {"hosts": hosts_by_group, "children": children_by_parent}
-
-
-def reconstruct_hierarchy_from_inventory(
-    inventory_sections: dict[str, Any],
-    known_hosts: list[str],
-) -> tuple[dict[str, Optional[str]], dict[str, str]]:
-    """Reconstruct parent map and host->leaf assignments from inventory sections."""
-    host_groups = inventory_sections.get("hosts", {}) if isinstance(inventory_sections, dict) else {}
-    children_groups = inventory_sections.get("children", {}) if isinstance(inventory_sections, dict) else {}
-
-    parent_map: dict[str, Optional[str]] = {
-        str(group_name): None
-        for group_name in host_groups.keys()
-    }
-    for parent_name, children in children_groups.items():
-        parent = str(parent_name)
-        parent_map.setdefault(parent, None)
-        if not isinstance(children, list):
-            continue
-        for child_name in children:
-            child = str(child_name)
-            parent_map[child] = parent
-
-    children_by_parent = _build_children_by_parent(parent_map)
-    leaves = [group_name for group_name in parent_map.keys() if not children_by_parent.get(group_name)]
-
-    known_host_set = set(known_hosts)
-    host_to_leaf: dict[str, str] = {}
-    for hostname in sorted(known_host_set):
-        candidates = [
-            leaf
-            for leaf in leaves
-            if hostname in set(host_groups.get(leaf, []))
-        ]
-        if not candidates:
-            continue
-        candidates.sort(
-            key=lambda name: (len(ancestor_chain(name, parent_map)), name),
-            reverse=True,
-        )
-        host_to_leaf[hostname] = candidates[0]
-
-    return parent_map, host_to_leaf
 
 
 def write_inventory(
@@ -1202,30 +1411,91 @@ def write_inventory(
         for hostname in merged_all_hosts:
             f.write(f"{hostname}\n")
 
-        for group_name in merged_host_groups.keys():
+        for group_name in sorted(merged_host_groups.keys(), key=inventory_group_sort_key):
             f.write(f"\n[{group_name}]\n")
             for hostname in merged_host_groups[group_name]:
                 f.write(f"{hostname}\n")
 
-        for group_name in merged_children_groups.keys():
+        for group_name in sorted(merged_children_groups.keys(), key=inventory_group_sort_key):
             f.write(f"\n[{group_name}:children]\n")
             for child_name in merged_children_groups[group_name]:
                 f.write(f"{child_name}\n")
 
 
-def clear_target_group_dirs(
+def _root_group_paths(group_paths: dict[str, str]) -> list[str]:
+    """Return only root paths for a provider-owned group hierarchy."""
+    sorted_paths = sorted(set(group_paths.values()), key=lambda path: (path.count(os.sep), path))
+    roots: list[str] = []
+    for path in sorted_paths:
+        if any(path == root or path.startswith(root + os.sep) for root in roots):
+            continue
+        roots.append(path)
+    return roots
+
+
+def clear_owned_group_dirs(group_vars_root: str, group_paths: dict[str, str]) -> None:
+    """Remove previously owned group hierarchy directories for the active provider."""
+    for relative_root in _root_group_paths(group_paths):
+        absolute_root = os.path.join(group_vars_root, relative_root)
+        if os.path.isdir(absolute_root):
+            shutil.rmtree(absolute_root)
+
+
+def refresh_foreign_provider_root_payloads(
     group_vars_root: str,
-    parent_map: dict[str, Optional[str]],
+    registry: dict[str, Any],
+    active_provider_key: str,
+    global_shared_payload: dict[str, Any],
+    merge_profile: str,
+    list_strategy_default: str,
 ) -> None:
-    """Remove only group subdirectories targeted by the current run."""
-    if not os.path.isdir(group_vars_root):
+    """Refresh foreign provider root group payloads when shared all.yaml changes."""
+    providers = registry.get(PROVIDERS_KEY, {})
+    for provider_key, entry in providers.items():
+        if provider_key == active_provider_key:
+            continue
+        root_group = entry.get("root_group")
+        group_paths = entry.get("group_paths", {})
+        shared_payload = entry.get("shared_payload", {})
+        if not isinstance(shared_payload, dict) or not root_group or root_group not in group_paths:
+            continue
+
+        delta = subtract_common(shared_payload, global_shared_payload)
+        if delta is _OMIT:
+            payload: dict[str, Any] = {}
+        else:
+            compacted = compact_payload(delta)
+            payload = compacted if isinstance(compacted, dict) else {}
+
+        hinted = apply_merge_directive_hints(
+            payload,
+            global_shared_payload,
+            merge_profile,
+            list_strategy_default,
+        ) if merge_profile != "off" else payload
+        write_yaml_file(
+            os.path.join(group_vars_root, group_paths[root_group], ALL_YAML),
+            hinted,
+        )
+
+
+def assign_provider_group_ranges(registry: dict[str, Any]) -> None:
+    """Assign deterministic non-overlapping group index ranges per provider."""
+    providers = registry.get(PROVIDERS_KEY, {})
+    if not isinstance(providers, dict):
         return
 
-    target_paths = sorted(set(build_group_path_map(parent_map).values()))
-    for relative_path in target_paths:
-        entry_path = os.path.join(group_vars_root, relative_path)
-        if os.path.isdir(entry_path):
-            shutil.rmtree(entry_path)
+    cursor = 0
+    for provider_key, entry in providers.items():
+        if not isinstance(entry, dict):
+            continue
+        group_names = entry.get("group_names", [])
+        group_count = len(group_names) if isinstance(group_names, list) else 0
+        width = max(1, group_count)
+        start = cursor
+        end = cursor + width - 1
+        entry["group_range"] = {"start": start, "end": end}
+        cursor = end + 1
 
 
 def main() -> None:
@@ -1270,8 +1540,8 @@ def main() -> None:
     )
     parser.add_argument(
         "--grouping-hosts-file",
-        required=True,
-        help="Path to user-defined grouping.hosts file.",
+        default=None,
+        help="Optional path to user-defined grouping.hosts file. If omitted, groups are auto-derived.",
     )
     parser.add_argument(
         "--strict-grouping-known-hosts",
@@ -1292,6 +1562,7 @@ def main() -> None:
     args = parser.parse_args()
 
     schema = load_schema(args.trimmed_json)
+    provider_key = derive_provider_key(args.trimmed_json)
 
     directory = args.directory
     hosts_file = args.hosts_file or os.path.join(directory, "hosts")
@@ -1308,120 +1579,119 @@ def main() -> None:
         for hostname, payload, _device_type in host_entries
     }
     active_hostnames = sorted(full_payload_by_host.keys())
-    cached_payload_by_host = load_host_payload_cache(directory)
-    cached_payload_by_host.update(full_payload_by_host)
-    all_hostnames = sorted(cached_payload_by_host.keys())
 
-    grouping_hosts_file = args.grouping_hosts_file
-    parsed_inventory, parse_errors = _parse_grouping_hosts_file(grouping_hosts_file)
-    if parse_errors:
-        raise SystemExit("grouping.hosts parsing failed:\n- " + "\n- ".join(parse_errors))
+    if args.grouping_hosts_file:
+        parsed_inventory, parse_errors = _parse_grouping_hosts_file(args.grouping_hosts_file)
+        if parse_errors:
+            raise SystemExit("grouping.hosts parsing failed:\n- " + "\n- ".join(parse_errors))
+    else:
+        parsed_inventory = {"all": active_hostnames, "hosts": {}, "children": {}}
 
-    current_run_shared_payload = build_shared_payload(
-        [cached_payload_by_host[hostname] for hostname in all_hostnames]
+    _existing_all_payload, registry = load_shared_all_state(group_vars_dir)
+    providers = registry.setdefault(PROVIDERS_KEY, {})
+    old_entry = copy.deepcopy(providers.get(provider_key, {}))
+    provider_entry = copy.deepcopy(old_entry)
+    provider_entry["managed_hosts"] = active_hostnames
+    provider_entry["shared_payload"] = build_shared_payload(
+        [full_payload_by_host[hostname] for hostname in active_hostnames]
     )
-    all_yaml_path = os.path.join(group_vars_dir, ALL_YAML)
-    global_shared_payload = current_run_shared_payload
+    providers[provider_key] = provider_entry
+
+    global_shared_payload = build_global_shared_payload_from_registry(registry)
     active_host_delta_entries = derive_host_delta_entries(full_payload_by_host, global_shared_payload)
     payload_by_hostname = {hostname: payload for hostname, payload in active_host_delta_entries}
 
-    common_groups, parent_map, host_to_leaf_group, grouping_errors = _build_user_groups_from_inventory(
-        parsed_inventory,
-        active_hostnames,
-        strict_known_hosts=args.strict_grouping_known_hosts,
-    )
-    if grouping_errors:
-        raise SystemExit("grouping.hosts validation failed:\n- " + "\n- ".join(grouping_errors))
+    if args.grouping_hosts_file:
+        common_groups, parent_map, host_to_leaf_group, grouping_errors = _build_user_groups_from_inventory(
+            parsed_inventory,
+            active_hostnames,
+            strict_known_hosts=args.strict_grouping_known_hosts,
+        )
+        if grouping_errors:
+            raise SystemExit("grouping.hosts validation failed:\n- " + "\n- ".join(grouping_errors))
+    else:
+        auto_inventory, common_groups, parent_map, host_to_leaf_group = _auto_grouping_from_host_payloads(
+            active_host_delta_entries
+        )
+        parsed_inventory = {
+            "all": active_hostnames,
+            "hosts": auto_inventory.get("hosts", {}),
+            "children": auto_inventory.get("children", {}),
+        }
 
-    existing_inventory = load_inventory_sections(hosts_file)
-    existing_parent_map, existing_host_to_leaf = reconstruct_hierarchy_from_inventory(
-        existing_inventory,
-        all_hostnames,
-    )
-
-    merged_parent_map = dict(existing_parent_map)
-    for group_name, parent_name in parent_map.items():
-        merged_parent_map[group_name] = parent_name
-    for group_name in merged_parent_map.keys():
-        merged_parent_map.setdefault(group_name, None)
-
-    merged_host_to_leaf = dict(existing_host_to_leaf)
-    for hostname, leaf_group in host_to_leaf_group.items():
-        merged_host_to_leaf[hostname] = leaf_group
-    merged_host_to_leaf = {
-        hostname: leaf_group
-        for hostname, leaf_group in merged_host_to_leaf.items()
-        if hostname in set(all_hostnames) and leaf_group in merged_parent_map
-    }
-
-    inventory_groups_all = build_hierarchical_inventory_groups(merged_parent_map, merged_host_to_leaf)
-
-    all_host_delta_entries = derive_host_delta_entries(cached_payload_by_host, global_shared_payload)
-    payload_by_hostname_all = {hostname: payload for hostname, payload in all_host_delta_entries}
-    common_groups_all = {
-        group_name: members
-        for group_name, members in inventory_groups_all.get("hosts", {}).items()
-        if members
-    }
-    effective_parent_map: dict[str, Optional[str]] = {}
-    for group_name, parent_name in merged_parent_map.items():
-        if group_name not in common_groups_all:
-            continue
-        parent = parent_name
-        while parent is not None and parent not in common_groups_all:
-            parent = merged_parent_map.get(parent)
-        effective_parent_map[group_name] = parent
-
-    group_full_payloads = build_group_full_payloads(common_groups_all, payload_by_hostname_all)
+    group_full_payloads = build_group_full_payloads(common_groups, payload_by_hostname)
     host_fallback_overrides = detect_and_fallback_sibling_conflicts(
-        common_groups_all,
-        effective_parent_map,
+        common_groups,
+        parent_map,
         group_full_payloads,
-        payload_by_hostname_all,
+        payload_by_hostname,
     )
 
-    # Per-group delta output is the default behavior: each group_vars/<group>/all.yml
-    # is written as the delta against its inherited baseline.
     group_delta_payloads = build_group_delta_payloads(
-        effective_parent_map,
+        parent_map,
         group_full_payloads,
         args.merge_directive_profile,
         args.merge_list_strategy_default,
     )
 
-    clear_target_group_dirs(group_vars_dir, effective_parent_map)
-    global_with_hints = apply_merge_directive_hints(
+    old_group_paths = old_entry.get("group_paths", {}) if isinstance(old_entry, dict) else {}
+    old_group_names = old_entry.get("group_names", []) if isinstance(old_entry, dict) else []
+    clear_owned_group_dirs(group_vars_dir, old_group_paths)
+    provider_path_prefix = sanitize_group_name(provider_key)
+    group_paths = write_group_hierarchy_payloads(
+        group_vars_dir,
+        parent_map,
+        group_delta_payloads,
+        path_prefix=provider_path_prefix,
+    )
+
+    roots = sorted(
+        [name for name, parent in parent_map.items() if parent is None],
+        key=lambda name: inventory_group_sort_key(_plain_group_name(name)),
+    )
+    provider_entry["group_names"] = [_plain_group_name(name) for name in common_groups.keys()]
+    provider_entry["group_paths"] = {
+        _plain_group_name(name): path for name, path in group_paths.items()
+    }
+    provider_entry["root_group"] = _plain_group_name(roots[0]) if roots else None
+    providers[provider_key] = provider_entry
+    assign_provider_group_ranges(registry)
+
+    write_shared_all_state(group_vars_dir, global_shared_payload, registry)
+    refresh_foreign_provider_root_payloads(
+        group_vars_dir,
+        registry,
+        provider_key,
         global_shared_payload,
-        {},
         args.merge_directive_profile,
         args.merge_list_strategy_default,
-    ) if args.merge_directive_profile != "off" else global_shared_payload
-    write_yaml_file(all_yaml_path, global_with_hints)
-    write_group_hierarchy_payloads(group_vars_dir, effective_parent_map, group_delta_payloads)
-    write_host_payload_cache(directory, cached_payload_by_host)
-
-    host_entries_all = [
-        (hostname, cached_payload_by_host[hostname], None)
-        for hostname in sorted(cached_payload_by_host.keys())
-    ]
+    )
 
     rewrite_host_vars_with_hierarchy(
-        host_entries_all,
+        host_entries,
         host_vars_dir,
         global_shared_payload,
-        effective_parent_map,
+        parent_map,
         group_full_payloads,
-        merged_host_to_leaf,
+        host_to_leaf_group,
         host_fallback_overrides,
         args.merge_directive_profile,
         args.merge_list_strategy_default,
     )
 
-    owned_group_names = sorted(
-        set(inventory_groups_all.get("hosts", {}).keys())
-        | set(inventory_groups_all.get("children", {}).keys())
-    )
-    write_inventory(hosts_file, all_hostnames, inventory_groups_all, owned_group_names)
+    active_set = set(active_hostnames)
+    inventory_groups = {
+        "hosts": {
+            group_name: sorted(set(host for host in hosts if host in active_set))
+            for group_name, hosts in parsed_inventory.get("hosts", {}).items()
+            if group_name != "all"
+        },
+        "children": {
+            group_name: sorted(set(children))
+            for group_name, children in parsed_inventory.get("children", {}).items()
+        },
+    }
+    write_inventory(hosts_file, active_hostnames, inventory_groups, old_group_names)
 
 
 if __name__ == "__main__":
