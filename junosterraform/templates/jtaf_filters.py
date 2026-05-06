@@ -14,7 +14,11 @@ Merge directives:
   _merge_directive: "keep_parent"       # Use parent, ignore this override
 """
 
-from ansible.errors import AnsibleFilterError
+try:
+    from ansible.errors import AnsibleFilterError
+except ImportError:
+    class AnsibleFilterError(Exception):
+        """Fallback filter error when ansible is unavailable."""
 from copy import deepcopy
 from typing import Any, Dict, Optional
 

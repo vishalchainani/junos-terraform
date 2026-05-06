@@ -139,6 +139,7 @@ META_KEY = "meta"
 REGISTRY_KEY = "jtaf_registry"
 PROVIDERS_KEY = "providers"
 ALL_YAML = "all.yaml"
+ALL_YML = "all.yml"
 
 
 def _plain_group_name(name: str) -> str:
@@ -678,10 +679,18 @@ def normalize_registry(raw_registry: Any) -> dict[str, Any]:
 def load_shared_all_state(group_vars_root: str) -> tuple[dict[str, Any], dict[str, Any]]:
     """Load shared all.yaml and split into payload and registry metadata."""
     all_file = os.path.join(group_vars_root, ALL_YAML)
+    if not os.path.exists(all_file):
+        all_file = os.path.join(group_vars_root, ALL_YML)
     payload = load_yaml_file(all_file)
     meta, non_meta = split_meta_payload(payload)
     registry = normalize_registry(meta.get(REGISTRY_KEY, {}))
     return non_meta, registry
+
+
+def write_group_all_payload(directory: str, payload: dict[str, Any]) -> None:
+    """Write compatibility copies for group all payload files."""
+    write_yaml_file(os.path.join(directory, ALL_YAML), payload)
+    write_yaml_file(os.path.join(directory, ALL_YML), payload)
 
 
 def write_shared_all_state(
@@ -692,7 +701,7 @@ def write_shared_all_state(
     """Persist shared all.yaml payload and registry metadata."""
     payload = copy.deepcopy(shared_payload)
     payload[META_KEY] = {REGISTRY_KEY: registry}
-    write_yaml_file(os.path.join(group_vars_root, ALL_YAML), payload)
+    write_group_all_payload(group_vars_root, payload)
 
 
 def build_global_shared_payload_from_registry(registry: dict[str, Any]) -> dict[str, Any]:
@@ -1038,8 +1047,8 @@ def write_group_hierarchy_payloads(
             for name, relative_path in path_map.items()
         }
     for group_name in sorted(path_map.keys(), key=lambda name: path_map[name]):
-        output_path = os.path.join(group_vars_root, path_map[group_name], ALL_YAML)
-        write_yaml_file(output_path, group_delta_payloads.get(group_name, {}))
+        output_dir = os.path.join(group_vars_root, path_map[group_name])
+        write_group_all_payload(output_dir, group_delta_payloads.get(group_name, {}))
     return path_map
 
 
@@ -1473,8 +1482,8 @@ def refresh_foreign_provider_root_payloads(
             merge_profile,
             list_strategy_default,
         ) if merge_profile != "off" else payload
-        write_yaml_file(
-            os.path.join(group_vars_root, group_paths[root_group], ALL_YAML),
+        write_group_all_payload(
+            os.path.join(group_vars_root, group_paths[root_group]),
             hinted,
         )
 
@@ -1637,7 +1646,7 @@ def main() -> None:
     old_group_paths = old_entry.get("group_paths", {}) if isinstance(old_entry, dict) else {}
     old_group_names = old_entry.get("group_names", []) if isinstance(old_entry, dict) else []
     clear_owned_group_dirs(group_vars_dir, old_group_paths)
-    provider_path_prefix = sanitize_group_name(provider_key)
+    provider_path_prefix = sanitize_group_name(provider_key) if len(providers) > 1 else ""
     group_paths = write_group_hierarchy_payloads(
         group_vars_dir,
         parent_map,
@@ -1686,10 +1695,14 @@ def main() -> None:
             for group_name, hosts in parsed_inventory.get("hosts", {}).items()
             if group_name != "all"
         },
-        "children": {
-            group_name: sorted(set(children))
-            for group_name, children in parsed_inventory.get("children", {}).items()
-        },
+        "children": (
+            {
+                group_name: sorted(set(children))
+                for group_name, children in parsed_inventory.get("children", {}).items()
+            }
+            if args.grouping_hosts_file
+            else {}
+        ),
     }
     write_inventory(hosts_file, active_hostnames, inventory_groups, old_group_names)
 
