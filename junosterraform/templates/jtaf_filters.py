@@ -98,6 +98,69 @@ class FilterModule:
         return data
 
 
+def _dispatch_merge(base: Any, override: Any, directive: Optional[str] = None) -> Any:
+    directive = directive or 'replace'
+
+    handlers = {
+        'replace': _merge_replace,
+        'keep_parent': _merge_keep_parent,
+        'merge_recursive': _merge_recursive,
+        'append': _merge_append,
+        'prepend': _merge_prepend,
+        'extend': _merge_extend,
+    }
+
+    try:
+        handler = handlers[directive]
+    except KeyError as exc:
+        raise AnsibleFilterError(f"Unknown merge directive: {directive}") from exc
+
+    return handler(base, override)
+
+
+def _merge_replace(base: Any, override: Any) -> Any:
+    del base
+    return override
+
+
+def _merge_keep_parent(base: Any, override: Any) -> Any:
+    del override
+    return base
+
+
+def _merge_recursive(base: Any, override: Any) -> Any:
+    if isinstance(base, dict) and isinstance(override, dict):
+        result = deepcopy(base)
+        result.update(override)
+        return result
+    return override
+
+
+def _merge_append(base: Any, override: Any) -> Any:
+    if isinstance(base, list) and isinstance(override, list):
+        return base + override
+    if isinstance(base, list):
+        return base + [override]
+    return [base, override]
+
+
+def _merge_prepend(base: Any, override: Any) -> Any:
+    if isinstance(base, list) and isinstance(override, list):
+        return override + base
+    if isinstance(base, list):
+        return [override] + base
+    return [override, base]
+
+
+def _merge_extend(base: Any, override: Any) -> Any:
+    if not isinstance(base, list) or not isinstance(override, list):
+        raise AnsibleFilterError(
+            f"'extend' directive requires both values to be lists, "
+            f"got {type(base).__name__} and {type(override).__name__}"
+        )
+    return base + override
+
+
 def jtaf_merge_with_directive(base: Any, override: Any, directive: Optional[str] = None) -> Any:
     """
     Merge two values according to a merge directive.
@@ -110,44 +173,4 @@ def jtaf_merge_with_directive(base: Any, override: Any, directive: Optional[str]
     Returns:
         Merged value
     """
-    # Default directive is 'replace'
-    if directive is None:
-        directive = 'replace'
-
-    if directive == 'replace':
-        return override
-
-    if directive == 'keep_parent':
-        return base
-
-    if directive == 'merge_recursive':
-        if isinstance(base, dict) and isinstance(override, dict):
-            result = deepcopy(base)
-            result.update(override)
-            return result
-        return override
-
-    if directive == 'append':
-        if isinstance(base, list) and isinstance(override, list):
-            return base + override
-        if isinstance(base, list):
-            return base + [override]
-        return [base, override]
-
-    if directive == 'prepend':
-        if isinstance(base, list) and isinstance(override, list):
-            return override + base
-        if isinstance(base, list):
-            return [override] + base
-        return [override, base]
-
-    if directive == 'extend':
-        # Same as append but error if either isn't a list
-        if not isinstance(base, list) or not isinstance(override, list):
-            raise AnsibleFilterError(
-                f"'extend' directive requires both values to be lists, "
-                f"got {type(base).__name__} and {type(override).__name__}"
-            )
-        return base + override
-
-    raise AnsibleFilterError(f"Unknown merge directive: {directive}")
+    return _dispatch_merge(base, override, directive)
