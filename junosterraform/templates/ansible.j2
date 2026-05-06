@@ -47,7 +47,12 @@
 			{%- set pathvar=indexvar -%}
 		{# INDEXVAR ELSE #}
 		{%- else -%}
-			{%- set pathvar = jtaf_root_var + '.' + path2variable(ele.path) -%}
+			{%- set base_path = path2variable(ele.path) -%}
+			{%- if base_path -%}
+				{%- set pathvar = jtaf_root_var + '.' + base_path -%}
+			{%- else -%}
+				{%- set pathvar = jtaf_root_var -%}
+			{%- endif -%}
 		{# INDEXVAR ENDIF #}
 		{%- endif -%}
 		{%- set ele_name_var = path2variable(preparename(ele.name)) -%}
