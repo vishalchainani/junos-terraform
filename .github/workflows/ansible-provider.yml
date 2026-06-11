@@ -16,10 +16,10 @@ jobs:
         python-version: ["3.10", "3.x"]
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
 
     - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@v6
       with:
         python-version: ${{ matrix.python-version }}
 
@@ -309,7 +309,7 @@ jobs:
 
     - name: Upload Ansible and NETCONF integration logs
       if: always() && env.ACT != 'true'
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7
       with:
         name: ansible-netconf-integration-logs-${{ matrix.python-version }}
         path: |
