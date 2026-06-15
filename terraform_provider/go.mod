@@ -3,8 +3,8 @@ module terraform_provider
 go 1.25.6
 
 require (
-	github.com/hashicorp/terraform-plugin-framework v1.18.0
-	github.com/hashicorp/terraform-plugin-go v0.30.0
+	github.com/hashicorp/terraform-plugin-framework v1.19.0
+	github.com/hashicorp/terraform-plugin-go v0.31.0
 	golang.org/x/crypto v0.53.0
 	nemith.io/netconf v0.0.4
 )
