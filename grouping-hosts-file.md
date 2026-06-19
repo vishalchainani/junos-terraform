@@ -25,9 +25,94 @@ Lines beginning with `#` are treated as comments. Each host or group token is on
 
 ---
 
-## Simple Flat Example — Switches
+## Simple Flat Example — Single Data Center (DC1)
 
-Suppose you have nine QFX devices across two data-centre pods. Create a file, e.g. `qfx.grouping.hosts`:
+One grouping hosts file is created per data center. Suppose DC1 contains seven QFX devices. Create `dc1.grouping.hosts`:
+
+```ini
+[all]
+dc1-borderleaf1
+dc1-borderleaf2
+dc1-leaf1
+dc1-leaf2
+dc1-leaf3
+dc1-spine1
+dc1-spine2
+
+[borderleaf]
+dc1-borderleaf1
+dc1-borderleaf2
+
+[leaf]
+dc1-leaf1
+dc1-leaf2
+dc1-leaf3
+
+[spine]
+dc1-spine1
+dc1-spine2
+```
+
+Then run:
+
+```bash
+jtaf-xml2yaml \
+  -j ansible-provider-junos-vqfx-evpn-vxlan/trimmed_schema.json \
+  -x examples/evpn-vxlan-dc/dc1/*{spine,leaf}*.xml \
+  -d ansible-evpn-vxlan-deploy \
+  --grouping-hosts-file ansible-evpn-vxlan-deploy/dc1.grouping.hosts
+```
+
+The tool writes:
+
+```
+ansible-evpn-vxlan-deploy/
+├── inventory.ini
+├── group_vars/
+│   ├── all.yaml              ← config keys shared by ALL seven DC1 devices
+│   ├── borderleaf/
+│   │   └── all.yaml          ← keys shared only by dc1-borderleaf1 and dc1-borderleaf2
+│   ├── leaf/
+│   │   └── all.yaml          ← keys shared only by the three leaf devices
+│   └── spine/
+│       └── all.yaml          ← keys shared only by the two DC1 spine devices
+└── host_vars/
+    ├── dc1-borderleaf1.yaml  ← unique delta for this device
+    ├── dc1-leaf1.yaml
+    └── ...
+```
+
+The generated `inventory.ini` will contain the `[borderleaf]`, `[leaf]`, and `[spine]` group sections exactly as declared in the grouping file.
+
+---
+
+## Multiple Data Centers in One Inventory Directory
+
+A key design point is that two separate `jtaf-xml2yaml` runs — each with its own `--grouping-hosts-file` — can target the **same `-d` output directory**. The tool merges inventory sections without clobbering existing groups.
+
+Continuing the example above, DC2 contains only spine devices. Create `dc2.grouping.hosts`:
+
+```ini
+[all]
+dc2-spine1
+dc2-spine2
+
+[spine]
+dc2-spine1
+dc2-spine2
+```
+
+Run the second conversion targeting the same directory:
+
+```bash
+jtaf-xml2yaml \
+  -j ansible-provider-junos-vqfx-evpn-vxlan/trimmed_schema.json \
+  -x examples/evpn-vxlan-dc/dc2/*spine*.xml \
+  -d ansible-evpn-vxlan-deploy \
+  --grouping-hosts-file ansible-evpn-vxlan-deploy/dc2.grouping.hosts
+```
+
+After both runs, `ansible-evpn-vxlan-deploy/inventory.ini` contains all groups from both data centers:
 
 ```ini
 [all]
@@ -57,98 +142,7 @@ dc2-spine1
 dc2-spine2
 ```
 
-Then run:
-
-```bash
-jtaf-xml2yaml \
-  -j ansible-provider-junos-vqfx-evpn-vxlan/trimmed_schema.json \
-  -x examples/evpn-vxlan-dc/dc1/*{spine,leaf}*.xml \
-     examples/evpn-vxlan-dc/dc2/*spine*.xml \
-  -d ansible-evpn-vxlan-deploy \
-  --grouping-hosts-file ansible-evpn-vxlan-deploy/qfx.grouping.hosts
-```
-
-The tool writes:
-
-```
-ansible-evpn-vxlan-deploy/
-├── inventory.ini
-├── group_vars/
-│   ├── all.yaml              ← config keys shared by ALL nine devices
-│   ├── borderleaf/
-│   │   └── all.yaml          ← keys shared only by dc1-borderleaf1 and dc1-borderleaf2
-│   ├── leaf/
-│   │   └── all.yaml          ← keys shared only by the three leaf devices
-│   └── spine/
-│       └── all.yaml          ← keys shared only by the four spine devices
-└── host_vars/
-    ├── dc1-borderleaf1.yaml  ← unique delta for this device
-    ├── dc1-leaf1.yaml
-    └── ...
-```
-
-The generated `inventory.ini` will contain the `[borderleaf]`, `[leaf]`, and `[spine]` group sections exactly as declared in the grouping file.
-
----
-
-## Multiple Device Families in One Inventory Directory
-
-A key design point is that two separate `jtaf-xml2yaml` runs — each with its own `--grouping-hosts-file` — can target the **same `-d` output directory**. The tool merges inventory sections without clobbering existing groups.
-
-For example, to add SRX firewall devices alongside the QFX switches:
-
-Create `firewall.grouping.hosts`:
-
-```ini
-[all]
-dc1-firewall1
-dc1-firewall2
-dc2-firewall1
-dc2-firewall2
-
-[firewall]
-dc1-firewall1
-dc1-firewall2
-dc2-firewall1
-dc2-firewall2
-```
-
-Run the second conversion targeting the same directory:
-
-```bash
-jtaf-xml2yaml \
-  -j ansible-provider-junos-srx-ansible-role/trimmed_schema.json \
-  -x examples/evpn-vxlan-dc/dc1/dc1-*firewall*.xml \
-     examples/evpn-vxlan-dc/dc2/dc2-*firewall*.xml \
-  -d ansible-evpn-vxlan-deploy \
-  --grouping-hosts-file ansible-evpn-vxlan-deploy/firewall.grouping.hosts
-```
-
-After both runs, `ansible-evpn-vxlan-deploy/inventory.ini` contains all groups from both files:
-
-```ini
-[all]
-dc1-borderleaf1
-dc1-borderleaf2
-dc1-leaf1
-...
-dc2-firewall2
-
-[borderleaf]
-dc1-borderleaf1
-dc1-borderleaf2
-
-[leaf]
-...
-
-[firewall]
-dc1-firewall1
-dc1-firewall2
-dc2-firewall1
-dc2-firewall2
-```
-
-And `group_vars/firewall/all.yaml` only contains config shared among the four firewall devices — completely separate from the QFX group vars — even though everything lives under one output directory.
+And `group_vars/spine/all.yaml` contains config shared across all four spine devices from both data centers — with any spine-specific differences between DC1 and DC2 falling through to the individual `host_vars` files.
 
 ---
 
