@@ -139,7 +139,6 @@ META_KEY = "meta"
 REGISTRY_KEY = "jtaf_registry"
 PROVIDERS_KEY = "providers"
 ALL_YAML = "all.yaml"
-ALL_YML = "all.yml"
 
 
 def _plain_group_name(name: str) -> str:
@@ -679,8 +678,6 @@ def normalize_registry(raw_registry: Any) -> dict[str, Any]:
 def load_shared_all_state(group_vars_root: str) -> tuple[dict[str, Any], dict[str, Any]]:
     """Load shared all.yaml and split into payload and registry metadata."""
     all_file = os.path.join(group_vars_root, ALL_YAML)
-    if not os.path.exists(all_file):
-        all_file = os.path.join(group_vars_root, ALL_YML)
     payload = load_yaml_file(all_file)
     meta, non_meta = split_meta_payload(payload)
     registry = normalize_registry(meta.get(REGISTRY_KEY, {}))
@@ -688,9 +685,8 @@ def load_shared_all_state(group_vars_root: str) -> tuple[dict[str, Any], dict[st
 
 
 def write_group_all_payload(directory: str, payload: dict[str, Any]) -> None:
-    """Write compatibility copies for group all payload files."""
+    """Write group all.yaml payload file."""
     write_yaml_file(os.path.join(directory, ALL_YAML), payload)
-    write_yaml_file(os.path.join(directory, ALL_YML), payload)
 
 
 def write_shared_all_state(
@@ -1646,7 +1642,7 @@ def main() -> None:
     old_group_paths = old_entry.get("group_paths", {}) if isinstance(old_entry, dict) else {}
     old_group_names = old_entry.get("group_names", []) if isinstance(old_entry, dict) else []
     clear_owned_group_dirs(group_vars_dir, old_group_paths)
-    provider_path_prefix = sanitize_group_name(provider_key) if len(providers) > 1 else ""
+    provider_path_prefix = ""
     group_paths = write_group_hierarchy_payloads(
         group_vars_dir,
         parent_map,
