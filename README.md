@@ -400,6 +400,7 @@ Create `ansible-evpn-vxlan-deploy/ansible.cfg`:
 ```ini
 [defaults]
 roles_path = ../ansible-provider-junos-vqfx-evpn-vxlan/roles:../ansible-provider-junos-srx-ansible-role/roles
+filter_plugins = ../ansible-provider-junos-vqfx-evpn-vxlan/filter_plugins:../ansible-provider-junos-srx-ansible-role/filter_plugins
 host_key_checking = False
 ```
 
@@ -409,7 +410,7 @@ For first-time Ansible users: `roles_path` tells Ansible where custom roles live
 
 `jtaf-xml2yaml` now requires a grouping definition. The section names in these files become your generated inventory groups and `group_vars/<group>/all.yaml` directories.
 
-Create `ansible-evpn-vxlan-deploy/qfx.grouping.hosts`:
+Create `ansible-evpn-vxlan-deploy/grouping.hosts`:
 
 ```ini
 [all]
@@ -422,6 +423,10 @@ dc1-spine1
 dc1-spine2
 dc2-spine1
 dc2-spine2
+dc1-firewall1
+dc1-firewall2
+dc2-firewall1
+dc2-firewall2
 
 [borderleaf]
 dc1-borderleaf1
@@ -437,16 +442,6 @@ dc1-spine1
 dc1-spine2
 dc2-spine1
 dc2-spine2
-```
-
-Create `ansible-evpn-vxlan-deploy/firewall.grouping.hosts`:
-
-```ini
-[all]
-dc1-firewall1
-dc1-firewall2
-dc2-firewall1
-dc2-firewall2
 
 [firewall]
 dc1-firewall1
@@ -465,7 +460,7 @@ jtaf-xml2yaml \
 	-j ansible-provider-junos-vqfx-evpn-vxlan/trimmed_schema.json \
   -d ansible-evpn-vxlan-deploy \
   --hosts-file ansible-evpn-vxlan-deploy/inventory.ini \
-  --grouping-hosts-file ansible-evpn-vxlan-deploy/qfx.grouping.hosts
+  --grouping-hosts-file ansible-evpn-vxlan-deploy/grouping.hosts
 ```
 
 7. Generate inventory + vars for the second role into the same playbook project
@@ -476,7 +471,7 @@ jtaf-xml2yaml \
   -j ansible-provider-junos-srx-ansible-role/trimmed_schema.json \
   -d ansible-evpn-vxlan-deploy \
   --hosts-file ansible-evpn-vxlan-deploy/inventory.ini \
-  --grouping-hosts-file ansible-evpn-vxlan-deploy/firewall.grouping.hosts
+  --grouping-hosts-file ansible-evpn-vxlan-deploy/grouping.hosts
 ```
 
 After both runs, your playbook project should contain at least:

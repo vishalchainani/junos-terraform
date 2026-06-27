@@ -1407,7 +1407,8 @@ def write_inventory(
     }
 
     for group_name, hosts in inventory_groups.get("hosts", {}).items():
-        merged_host_groups[group_name] = sorted(set(hosts))
+        if hosts:
+            merged_host_groups[group_name] = sorted(set(hosts))
     for group_name, children in inventory_groups.get("children", {}).items():
         merged_children_groups[group_name] = sorted(set(children))
 
