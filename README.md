@@ -408,7 +408,7 @@ For first-time Ansible users: `roles_path` tells Ansible where custom roles live
 
 5. Create `grouping.hosts` files for the inventory hierarchy
 
-`jtaf-xml2yaml` now requires a grouping definition. The section names in these files become your generated inventory groups and `group_vars/<group>/all.yaml` directories.
+`jtaf-xml2yaml` now requires a grouping definition. The section names in these files become your generated inventory groups and `group_vars/<group>/all.yaml` directories. For a deeper look at the file format, merge behaviour, and multi-provider patterns, see [grouping-hosts-file.md](grouping-hosts-file.md).
 
 Create `ansible-evpn-vxlan-deploy/grouping.hosts`:
 
