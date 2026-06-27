@@ -1334,6 +1334,32 @@ def _build_user_groups_from_inventory(
     return common_groups, parent_map, host_to_leaf, errors
 
 
+def _prefix_group_names(
+    common_groups: dict[str, list[str]],
+    parent_map: dict[str, Optional[str]],
+    host_to_leaf: dict[str, str],
+    prefix: str,
+) -> tuple[dict[str, list[str]], dict[str, Optional[str]], dict[str, str]]:
+    """Rename all auto-generated group tokens to include a provider-specific prefix.
+
+    Prevents directory collisions when two providers are processed into the same
+    output directory: both would otherwise auto-generate ``candidate1`` etc.
+    """
+    def _rename(token: str) -> str:
+        if ":" in token:
+            tag, name = token.split(":", 1)
+            return f"{tag}:{prefix}_{name}"
+        return f"{prefix}_{token}"
+
+    new_groups: dict[str, list[str]] = {_rename(k): v for k, v in common_groups.items()}
+    new_parent_map: dict[str, Optional[str]] = {
+        _rename(k): (_rename(v) if v is not None else None)
+        for k, v in parent_map.items()
+    }
+    new_host_to_leaf: dict[str, str] = {host: _rename(g) for host, g in host_to_leaf.items()}
+    return new_groups, new_parent_map, new_host_to_leaf
+
+
 def _auto_grouping_from_host_payloads(
     host_var_entries: list[tuple[str, dict[str, Any]]],
 ) -> tuple[dict[str, Any], dict[str, list[str]], dict[str, Optional[str]], dict[str, str]]:
@@ -1619,6 +1645,12 @@ def main() -> None:
         auto_inventory, common_groups, parent_map, host_to_leaf_group = _auto_grouping_from_host_payloads(
             active_host_delta_entries
         )
+        # Scope auto-generated group names to this provider to prevent directory
+        # collisions when multiple providers share the same output directory.
+        common_groups, parent_map, host_to_leaf_group = _prefix_group_names(
+            common_groups, parent_map, host_to_leaf_group, provider_key
+        )
+        auto_inventory = build_hierarchical_inventory_groups(parent_map, host_to_leaf_group)
         parsed_inventory = {
             "all": active_hostnames,
             "hosts": auto_inventory.get("hosts", {}),
