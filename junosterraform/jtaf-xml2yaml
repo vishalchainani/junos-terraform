@@ -1473,6 +1473,34 @@ def clear_owned_group_dirs(group_vars_root: str, group_paths: dict[str, str]) ->
             shutil.rmtree(absolute_root)
 
 
+def _merge_additive(target: dict[str, Any], source: dict[str, Any]) -> dict[str, Any]:
+    """Merge *source* into *target* without overriding existing content.
+
+    - Merge-directive keys (prefixed with ``_``) are inserted via ``setdefault``
+      so that existing directives are preserved.
+    - Keys absent from *target* are copied from *source*.
+    - Keys present in both as dicts are merged recursively.
+    - Keys present in both as lists: *target*'s list is kept intact; list-level
+      deduplication is delegated to the Ansible ``jtaf_apply_merge_directives``
+      filter at playbook runtime.
+    - Scalar keys already in *target*: *target* value wins.
+
+    This is used to propagate a foreign provider's delta to every group file
+    when the global shared payload shrinks (e.g., because a new provider was
+    added whose devices do not share some previously-global values).
+    """
+    result = copy.deepcopy(target)
+    for key, src_val in source.items():
+        if key.startswith("_"):
+            result.setdefault(key, copy.deepcopy(src_val))
+        elif key not in result:
+            result[key] = copy.deepcopy(src_val)
+        elif isinstance(src_val, dict) and isinstance(result[key], dict):
+            result[key] = _merge_additive(result[key], src_val)
+        # list or scalar already in target — keep target's value
+    return result
+
+
 def refresh_foreign_provider_root_payloads(
     group_vars_root: str,
     registry: dict[str, Any],
@@ -1481,15 +1509,26 @@ def refresh_foreign_provider_root_payloads(
     merge_profile: str,
     list_strategy_default: str,
 ) -> None:
-    """Refresh foreign provider root group payloads when shared all.yaml changes."""
+    """Refresh foreign provider group payloads when shared all.yaml changes.
+
+    When a new provider is added (or re-run), the global shared payload may
+    shrink: values that were previously global (e.g. ``notice: true`` under
+    ``system.syslog``) are no longer shared across all providers and fall out of
+    ``group_vars/all.yaml``.  These values must be distributed to *every* group
+    of the foreign provider — not only the root group — so that all devices
+    covered by that provider still receive them at render time.
+
+    The merge is additive: values already present in each group file are kept
+    (group-specific deltas are not overwritten), and only absent keys from the
+    provider-wide delta are inserted.
+    """
     providers = registry.get(PROVIDERS_KEY, {})
     for provider_key, entry in providers.items():
         if provider_key == active_provider_key:
             continue
-        root_group = entry.get("root_group")
         group_paths = entry.get("group_paths", {})
         shared_payload = entry.get("shared_payload", {})
-        if not isinstance(shared_payload, dict) or not root_group or root_group not in group_paths:
+        if not isinstance(shared_payload, dict) or not group_paths:
             continue
 
         delta = subtract_common(shared_payload, global_shared_payload)
@@ -1505,10 +1544,15 @@ def refresh_foreign_provider_root_payloads(
             merge_profile,
             list_strategy_default,
         ) if merge_profile != "off" else payload
-        write_group_all_payload(
-            os.path.join(group_vars_root, group_paths[root_group]),
-            hinted,
-        )
+
+        # Propagate the provider-wide delta to every group owned by this provider
+        # so that all devices get values that fell out of the global shared payload.
+        for _group_name, group_path in group_paths.items():
+            group_dir = os.path.join(group_vars_root, group_path)
+            existing = load_yaml_file(os.path.join(group_dir, ALL_YAML))
+            merged = _merge_additive(existing, hinted)
+            write_group_all_payload(group_dir, merged)
+
 
 
 def assign_provider_group_ranges(registry: dict[str, Any]) -> None:
