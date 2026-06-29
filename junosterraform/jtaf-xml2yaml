@@ -139,6 +139,7 @@ META_KEY = "meta"
 REGISTRY_KEY = "jtaf_registry"
 PROVIDERS_KEY = "providers"
 ALL_YAML = "all.yaml"
+REGISTRY_FILE = "registry.yaml"
 
 
 def _plain_group_name(name: str) -> str:
@@ -676,12 +677,11 @@ def normalize_registry(raw_registry: Any) -> dict[str, Any]:
 
 
 def load_shared_all_state(group_vars_root: str) -> tuple[dict[str, Any], dict[str, Any]]:
-    """Load shared all.yaml and split into payload and registry metadata."""
-    all_file = os.path.join(group_vars_root, ALL_YAML)
-    payload = load_yaml_file(all_file)
-    meta, non_meta = split_meta_payload(payload)
-    registry = normalize_registry(meta.get(REGISTRY_KEY, {}))
-    return non_meta, registry
+    """Load shared all.yaml (config) and registry.yaml (tool state) separately."""
+    config_payload = load_yaml_file(os.path.join(group_vars_root, ALL_YAML))
+    registry_raw = load_yaml_file(os.path.join(group_vars_root, REGISTRY_FILE))
+    registry = normalize_registry(registry_raw.get(META_KEY, {}).get(REGISTRY_KEY, {}))
+    return config_payload, registry
 
 
 def write_group_all_payload(directory: str, payload: dict[str, Any]) -> None:
@@ -694,10 +694,12 @@ def write_shared_all_state(
     shared_payload: dict[str, Any],
     registry: dict[str, Any],
 ) -> None:
-    """Persist shared all.yaml payload and registry metadata."""
-    payload = copy.deepcopy(shared_payload)
-    payload[META_KEY] = {REGISTRY_KEY: registry}
-    write_group_all_payload(group_vars_root, payload)
+    """Persist config to all.yaml and tool state to registry.yaml separately."""
+    write_yaml_file(
+        os.path.join(group_vars_root, REGISTRY_FILE),
+        {META_KEY: {REGISTRY_KEY: registry}},
+    )
+    write_group_all_payload(group_vars_root, shared_payload)
 
 
 def build_global_shared_payload_from_registry(registry: dict[str, Any]) -> dict[str, Any]:
