@@ -428,24 +428,28 @@ dc1-firewall2
 dc2-firewall1
 dc2-firewall2
 
-[borderleaf]
+[dc1-borderleaf]
 dc1-borderleaf1
 dc1-borderleaf2
 
-[leaf]
+[dc1-leaf]
 dc1-leaf1
 dc1-leaf2
 dc1-leaf3
 
-[spine]
+[dc1-spine]
 dc1-spine1
 dc1-spine2
+
+[dc2-leafspine]
 dc2-spine1
 dc2-spine2
 
-[firewall]
+[dc1-firewall]
 dc1-firewall1
 dc1-firewall2
+
+[dc2-firewall]
 dc2-firewall1
 dc2-firewall2
 ```
@@ -537,7 +541,7 @@ Create `ansible-evpn-vxlan-deploy/site.yml`:
         mode: '0755'
 
 - name: Render XML from generated QFX role
-  hosts: borderleaf:leaf:spine
+  hosts: '~^dc\d+-(borderleaf|leaf|spine|leafspine)$'
   gather_facts: false
   connection: local
   vars:
@@ -548,7 +552,7 @@ Create `ansible-evpn-vxlan-deploy/site.yml`:
       delegate_to: localhost
 
 - name: Render XML from generated SRX role
-  hosts: firewall
+  hosts: '~^dc\d+-(firewall)$'
   gather_facts: false
   connection: local
   vars:
@@ -559,7 +563,7 @@ Create `ansible-evpn-vxlan-deploy/site.yml`:
       delegate_to: localhost
 
 - name: Preview and apply rendered XML on QFX devices
-  hosts: borderleaf:leaf:spine
+  hosts: '~^dc\d+-(borderleaf|leaf|spine|leafspine)$'
   gather_facts: false
   connection: local
   vars:
@@ -622,7 +626,7 @@ Create `ansible-evpn-vxlan-deploy/site.yml`:
           - "confirm={{ confirm_result.msg | default('no message') }}"
 
 - name: Preview and apply rendered XML on SRX devices
-  hosts: firewall
+  hosts: '~^dc\d+-(firewall)$'
   gather_facts: false
   connection: local
   vars:

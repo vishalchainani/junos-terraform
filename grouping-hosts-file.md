@@ -49,24 +49,28 @@ dc1-firewall2
 dc2-firewall1
 dc2-firewall2
 
-[borderleaf]
+[dc1-borderleaf]
 dc1-borderleaf1
 dc1-borderleaf2
 
-[leaf]
+[dc1-leaf]
 dc1-leaf1
 dc1-leaf2
 dc1-leaf3
 
-[spine]
+[dc1-spine]
 dc1-spine1
 dc1-spine2
+
+[dc2-leafspine]
 dc2-spine1
 dc2-spine2
 
-[firewall]
+[dc1-firewall]
 dc1-firewall1
 dc1-firewall2
+
+[dc2-firewall]
 dc2-firewall1
 dc2-firewall2
 ```
@@ -82,7 +86,7 @@ Both the QFX and SRX roles reference the **same** grouping file. Run one command
 ```bash
 jtaf-xml2yaml \
   -j ansible-provider-junos-vqfx-evpn-vxlan/trimmed_schema.json \
-  -x examples/evpn-vxlan-dc/dc1/*{spine,leaf,borderleaf}*.xml \
+  -x examples/evpn-vxlan-dc/dc1/*{spine,leaf}*.xml \
      examples/evpn-vxlan-dc/dc2/*spine*.xml \
   -d ansible-evpn-vxlan-deploy \
   --hosts-file ansible-evpn-vxlan-deploy/inventory.ini \
@@ -108,14 +112,18 @@ ansible-evpn-vxlan-deploy/
 ├── inventory.ini
 ├── group_vars/
 │   ├── all.yaml              ← keys shared across ALL 13 devices
-│   ├── borderleaf/
-│   │   └── all.yaml          ← keys shared only by the two borderleaf devices
-│   ├── leaf/
-│   │   └── all.yaml          ← keys shared only by the three leaf devices
-│   ├── spine/
-│   │   └── all.yaml          ← keys shared across all four spine devices (DC1 + DC2)
-│   └── firewall/
-│       └── all.yaml          ← keys shared across all four firewall devices (DC1 + DC2)
+│   ├── dc1-borderleaf/
+│   │   └── all.yaml          ← keys shared by the two DC1 borderleaf devices
+│   ├── dc1-leaf/
+│   │   └── all.yaml          ← keys shared by the three DC1 leaf devices
+│   ├── dc1-spine/
+│   │   └── all.yaml          ← keys shared by the two DC1 spine devices
+│   ├── dc2-leafspine/
+│   │   └── all.yaml          ← keys shared by the two DC2 spine devices
+│   ├── dc1-firewall/
+│   │   └── all.yaml          ← keys shared by the two DC1 firewall devices
+│   └── dc2-firewall/
+│       └── all.yaml          ← keys shared by the two DC2 firewall devices
 └── host_vars/
     ├── dc1-borderleaf1.yaml
     ├── dc1-leaf1.yaml
@@ -142,29 +150,33 @@ dc1-firewall2
 dc2-firewall1
 dc2-firewall2
 
-[borderleaf]
+[dc1-borderleaf]
 dc1-borderleaf1
 dc1-borderleaf2
 
-[leaf]
+[dc1-leaf]
 dc1-leaf1
 dc1-leaf2
 dc1-leaf3
 
-[spine]
+[dc1-spine]
 dc1-spine1
 dc1-spine2
+
+[dc2-leafspine]
 dc2-spine1
 dc2-spine2
 
-[firewall]
+[dc1-firewall]
 dc1-firewall1
 dc1-firewall2
+
+[dc2-firewall]
 dc2-firewall1
 dc2-firewall2
 ```
 
-`group_vars/spine/all.yaml` contains config shared across all four spine devices from both data centers. Any spine-specific differences between DC1 and DC2 fall through to the individual `host_vars` files.
+`group_vars/dc1-spine/all.yaml` contains config shared by the two DC1 spine devices. DC2 spine devices live in the separate `dc2-leafspine` group, so differences between the two data centers are captured at the group level rather than falling through to `host_vars`.
 
 ---
 
