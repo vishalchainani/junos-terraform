@@ -270,6 +270,13 @@ is not silently discarded. String-valued and Boolean-valued schema leaves
 are not subject to this empty-leaf normalization. Regenerate existing roles
 after updating JTAF to receive this template change.
 
+Non-presence containers are omitted when none of their supported descendants
+render XML, including nested empty dictionaries or omitted false empty leaves.
+YANG presence containers retain their meaning when explicitly supplied as empty
+maps; undefined, null, or Boolean false presence containers are omitted. The pyang
+JSON schema preserves the `presence` statement for this distinction. Regenerate
+schemas as well as roles if an older schema lacks presence metadata.
+
 Quick usage:
 ```
 jtaf-ansible -j <junos.json> -x <config1.xml> [-x <config2.xml> ...] -t <device-type>
