@@ -262,6 +262,14 @@ terraform apply -auto-approve
 
 Create an Ansible role + playbook from a Junos JSON schema and one or more XML configs. The generated playbook runs locally and renders configs (does not connect to devices) by default.
 
+Schema-defined `empty` leaves accept Boolean `true` or case-insensitive string
+`"true"` and render as empty XML elements (for example, `<mtu-discovery/>`).
+Boolean `false`, string `"false"`, and undefined values omit that statement.
+Other supplied values retain the existing rendering behavior so invalid input
+is not silently discarded. String-valued and Boolean-valued schema leaves
+are not subject to this empty-leaf normalization. Regenerate existing roles
+after updating JTAF to receive this template change.
+
 Quick usage:
 ```
 jtaf-ansible -j <junos.json> -x <config1.xml> [-x <config2.xml> ...] -t <device-type>
